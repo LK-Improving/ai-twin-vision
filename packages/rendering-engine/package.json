@@ -1,0 +1,24 @@
+{
+  "name": "@dt/rendering-engine",
+  "version": "1.0.0",
+  "description": "企业级数字孪生低代码平台 — Cesium + Three.js 双引擎渲染内核",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dt/shared-types": "workspace:*",
+    "cesium": "^1.121.0",
+    "three": "^0.168.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.168.0"
+  },
+  "peerDependencies": {
+    "three": "^0.168.0"
+  },
+  "license": "MIT"
+}

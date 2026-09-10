@@ -1,0 +1,64 @@
+{
+  "name": "digital-twin-lowcode-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "企业级数字孪生低代码平台 — Cesium 宏观地理 + Three.js 微观精细模型 + 低代码编排的 WebGL 数字孪生底座",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/**\" dev",
+    "dev:web": "pnpm --filter @dt/builder-server dev",
+    "dev:api": "pnpm --filter @dt/widget-server start:dev",
+    "build": "pnpm -r build",
+    "build:pkg": "pnpm --filter \"./packages/**\" build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . --cache",
+    "lint:fix": "eslint . --cache --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,vue,js,cjs,mjs,json,md,yml,yaml,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,vue,js,cjs,mjs,json,md,yml,yaml,css}\"",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @dt/builder-server test:e2e",
+    "infra:up": "docker compose -f docker/docker-compose.dev.yml --env-file .env.dev up -d",
+    "infra:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "infra:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
+    "db:migrate": "pnpm --filter @dt/widget-server migration:run",
+    "db:seed": "pnpm --filter @dt/widget-server seed",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.4.1",
+    "@commitlint/config-conventional": "^19.4.1",
+    "@types/node": "^22.5.4",
+    "@typescript-eslint/eslint-plugin": "^8.5.0",
+    "@typescript-eslint/parser": "^8.5.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-vue": "^9.28.0",
+    "husky": "^9.1.5",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.5.4",
+    "vue-eslint-parser": "^9.4.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,vue,js,cjs,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@swc/core",
+      "unrs-resolver"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@dt/widgets",
+  "version": "1.0.0",
+  "description": "企业级数字孪生低代码平台 — 低代码 2D 大屏组件库",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "echo \"consumed as source via vite alias\"",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dt/shared-types": "workspace:*",
+    "echarts": "^5.5.1",
+    "vue": "^3.4.38"
+  },
+  "devDependencies": {
+    "vue-tsc": "^2.1.6"
+  },
+  "license": "MIT"
+}
