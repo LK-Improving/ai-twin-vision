@@ -1,9 +1,9 @@
 {
-  "name": "@dt/builder-server",
+  "name": "@dt/builder",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "企业级数字孪生低代码平台 — 前端构建器应用",
+  "description": "企业级数字孪生低代码平台 — 前端构建器应用（浏览器工程，非服务端，故不加 -server 后缀）",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -19,6 +19,7 @@
     "cesium": "^1.121.0",
     "echarts": "^5.5.1",
     "pinia": "^2.2.2",
+    "socket.io-client": "^4.8.3",
     "three": "^0.168.0",
     "vue": "^3.4.38",
     "vue-router": "^4.4.3"

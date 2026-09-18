@@ -24,7 +24,7 @@ Cesium（宏观 GIS）+ Three.js（微观精细模型）双引擎融合的数字
 │   ├── rendering-engine/   双引擎渲染内核（TwinViewer / 坐标转换 / LOD / 拾取 / 性能监控）
 │   └── widgets/            低代码组件库（图表 + UI + WidgetRenderer + 注册表）
 ├── apps/
-│   ├── frontend/builder-server/   Vue3 编辑器应用（登录 / 场景 / 组件 / 资产 / 数据 / 系统）
+│   ├── frontend/builder/          Vue3 编辑器应用（登录 / 场景 / 组件 / 资产 / 数据 / 系统）
 │   └── backend/widget-server/      NestJS 核心服务
 ├── docker/                 本地基础设施编排（PostgreSQL / Redis / MinIO / Nginx）
 └── docs/                   需求拆解与详细设计文档

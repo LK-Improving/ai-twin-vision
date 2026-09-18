@@ -29,7 +29,7 @@ module.exports = {
         'engine', // packages/rendering-engine
         'widgets', // packages/widgets
         'shared', // packages/shared-types
-        'web', // apps/frontend/builder-server
+        'web', // apps/frontend/builder
         'api', // apps/backend/widget-server
         'auth',
         'scene',

@@ -135,8 +135,8 @@ export function useNodeDrag(opts: {
     e.stopPropagation();
     dragging.value = true;
     const scale = opts.getScale();
-    let startX = e.clientX;
-    let startY = e.clientY;
+    const startX = e.clientX;
+    const startY = e.clientY;
     const init = items.map((it) => ({ id: it.id, rect: { ...it.rect } }));
 
     function onMove(ev: MouseEvent): void {
@@ -188,8 +188,8 @@ export function useNodeResize(opts: {
     e.stopPropagation();
     resizing.value = true;
     const scale = opts.getScale();
-    let startX = e.clientX;
-    let startY = e.clientY;
+    const startX = e.clientX;
+    const startY = e.clientY;
     const init = { ...initRect };
     const right = init.x + init.width;
     const bottom = init.y + init.height;
@@ -197,8 +197,8 @@ export function useNodeResize(opts: {
     const fromCenter = e.altKey;
 
     function compute(ev: MouseEvent): { x: number; y: number; width: number; height: number } {
-      let dx = (ev.clientX - startX) / scale;
-      let dy = (ev.clientY - startY) / scale;
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
       let x = init.x;
       let y = init.y;
       let width = init.width;
