@@ -146,6 +146,8 @@ CREATE TABLE IF NOT EXISTS biz_scene (
     status          SMALLINT     NOT NULL DEFAULT 0,
     version         INT          NOT NULL DEFAULT 1,
     publish_version INT,
+    -- 发布访问令牌（/screen/:token 公开访问），首次发布时生成后保持不变
+    publish_token   VARCHAR(64),
     creator_id      UUID         NOT NULL REFERENCES sys_user (id),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -157,6 +159,11 @@ COMMENT ON COLUMN biz_scene.engine_config IS 'Cesium 与 Three.js 引擎配置�
 COMMENT ON COLUMN biz_scene.layout IS '低代码 2D 大屏画布 Schema（节点树 + 事件编排）';
 COMMENT ON COLUMN biz_scene.status IS '状态：0-草稿，1-已发布，2-已归档';
 CREATE INDEX IF NOT EXISTS idx_scene_tenant_status ON biz_scene (tenant_id, status, updated_at DESC);
+-- 幂等升级：CREATE TABLE IF NOT EXISTS 不会为已存在的表补列，
+-- 在旧版本初始化的库上重放本脚本时需显式补齐，否则下方索引会因缺列报错。
+ALTER TABLE biz_scene ADD COLUMN IF NOT EXISTS publish_token VARCHAR(64);
+-- 发布令牌唯一索引（NULL 不参与唯一性约束）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_publish_token ON biz_scene (publish_token) WHERE publish_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_scene_creator ON biz_scene (creator_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_scene_tenant_name ON biz_scene (tenant_id, name) WHERE deleted_at IS NULL;
 
@@ -251,13 +258,15 @@ CREATE TABLE IF NOT EXISTS biz_file (
     file_size    BIGINT        NOT NULL,
     storage_path VARCHAR(1000) NOT NULL,
     storage_type VARCHAR(10)   NOT NULL DEFAULT 'LOCAL',
-    md5          VARCHAR(32)   NOT NULL,
+    md5          VARCHAR(64)   NOT NULL,
     creator_id   UUID          NOT NULL REFERENCES sys_user (id),
     created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     deleted_at   TIMESTAMPTZ
 );
 COMMENT ON TABLE  biz_file IS '文件表：仅记录元数据与访问路径，二进制存于对象存储';
-COMMENT ON COLUMN biz_file.md5 IS '文件 MD5，用于秒传与完整性校验';
+COMMENT ON COLUMN biz_file.md5 IS '内容指纹（md5=32 或 sha256=64 十六进制），用于秒传与完整性校验';
+-- 幂等升级：旧库 md5 列为 VARCHAR(32)，容纳不下 sha256 指纹，拓宽为 64（已是 64 时为空操作）
+ALTER TABLE biz_file ALTER COLUMN md5 TYPE VARCHAR(64);
 CREATE INDEX IF NOT EXISTS idx_file_tenant_md5 ON biz_file (tenant_id, md5);
 CREATE INDEX IF NOT EXISTS idx_file_creator ON biz_file (creator_id, created_at DESC);
 

@@ -12,9 +12,14 @@ playwright-report/
 test-results/
 
 # env
+# 真实环境文件一律不入库（含第三方服务密钥），仅 .env.example 作为模板跟踪
 .env
 .env.local
 .env.*.local
+.env.dev
+.env.test
+.env.prod
+!.env.example
 
 # logs
 logs/

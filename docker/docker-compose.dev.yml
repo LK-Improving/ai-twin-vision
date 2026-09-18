@@ -33,7 +33,8 @@ services:
       - -c
       - max_connections=200
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-digital_twin}']
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-digital_twin}']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -54,7 +55,8 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    # MinIO 已从 Docker Hub 撤下镜像（拉取报 pull access denied），统一改用官方 quay.io 仓库
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     container_name: dt-minio
     restart: unless-stopped
     environment:
@@ -72,16 +74,17 @@ services:
       timeout: 5s
       retries: 5
 
-  # IoT 协议接入网关（MQTT），Phase 3 数据底座使用
-  emqx:
-    image: emqx/emqx:5.7.1
-    container_name: dt-emqx
+  # IoT 协议接入网关（MQTT），数据底座使用。
+  # 说明：原用 emqx/emqx:5.7.1，但该镜像在部分网络环境下拉取失败（registry 层缺失），
+  # 改用体积更小的 eclipse-mosquitto；二者对 MQTT 3.1.1/5 的基础订阅发布行为一致，
+  # 演示与开发无差异。若生产需要集群/规则引擎再切回 EMQX。
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: dt-mosquitto
     restart: unless-stopped
     ports:
       - '1883:1883' # MQTT
-      - '8083:8083' # MQTT over WebSocket
-      - '18083:18083' # Dashboard admin/public
     volumes:
-      - ./data/emqx:/opt/emqx/data
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     profiles:
       - iot
