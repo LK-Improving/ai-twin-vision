@@ -47,7 +47,7 @@ export interface DataMappingItem {
   mappingConfig: {
     /** 组件属性 → 数据字段路径 */
     fieldMap: Record<string, string>;
-    /** 转换规则脚本（沙箱执行） */
+    /** 转换规则脚本（在 Worker 沙箱内执行，入参 data，无 window/document/fetch） */
     transformScript?: string;
     /** 状态映射：值区间 → 视觉表现 */
     stateRules?: Array<{
@@ -168,6 +168,18 @@ export interface CreateAlertRuleRequest {
   threshold?: number;
   alertLevel: AlertLevel | number;
   notifyChannel: AlertRuleItem['notifyChannel'];
+  enabled?: boolean;
+}
+
+/** 告警规则更新（全字段可选） */
+export interface UpdateAlertRuleRequest {
+  deviceId?: string;
+  propertyCode?: string;
+  ruleName?: string;
+  condition?: AlertRuleItem['condition'];
+  threshold?: number | null;
+  alertLevel?: AlertLevel | number;
+  notifyChannel?: AlertRuleItem['notifyChannel'];
   enabled?: boolean;
 }
 

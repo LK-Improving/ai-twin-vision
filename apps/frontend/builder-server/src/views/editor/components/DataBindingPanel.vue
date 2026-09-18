@@ -14,6 +14,7 @@ import BaseTextarea from '@/components/ui/BaseTextarea.vue';
 import BaseNumberInput from '@/components/ui/BaseNumberInput.vue';
 import BaseButton from '@/components/ui/BaseButton.vue';
 import { useToast } from '@/composables/useToast';
+import { getScriptSandbox } from '@/sandbox';
 import { deepClone } from '@/views/editor/utils/object';
 import EmptyState from '@/components/ui/EmptyState.vue';
 
@@ -21,8 +22,8 @@ const store = useEditorStore();
 const toast = useToast();
 const { selectedNode, dataSources } = storeToRefs(store);
 
-const node = computed<WidgetNode | null>(
-  () => (selectedNode.value?.kind === '2D' ? (selectedNode.value.data as WidgetNode) : null),
+const node = computed<WidgetNode | null>(() =>
+  selectedNode.value?.kind === '2D' ? (selectedNode.value.data as WidgetNode) : null,
 );
 
 /** 组件可接收的数据字段（用于字段映射表行） */
@@ -51,9 +52,7 @@ function commit(): void {
   store.updateNode(node.value.id, { dataBinding: deepClone(binding.value) }, 'data');
 }
 
-const dsOptions = computed(() =>
-  dataSources.value.map((d) => ({ label: d.name, value: d.id })),
-);
+const dsOptions = computed(() => dataSources.value.map((d) => ({ label: d.name, value: d.id })));
 
 const staticText = ref('');
 watch(
@@ -85,22 +84,25 @@ function setFieldMap(key: string, path: string): void {
 const previewResult = ref('');
 const previewing = ref(false);
 
-/** 在沙箱内执行转换脚本（与运行时 event-runtime 约束一致，仅暴露 data 入参） */
-function runTransform(script: string, data: unknown): unknown {
-  // 安全边界：转换脚本运行在受限作用域，仅能访问入参 data，无法触及 window/document
-  const fn = new Function('data', `"use strict";\n${script}`);
-  return fn(data);
-}
-
-function preview(): void {
+/** 预览数据：与运行时跑同一个沙箱实现，消除「编辑器能跑、线上报错」的双标 */
+async function preview(): Promise<void> {
   previewing.value = true;
   try {
     const raw = binding.value.staticData;
-    let result: unknown = raw;
-    if (binding.value.transformScript && binding.value.transformScript.trim()) {
-      result = runTransform(binding.value.transformScript, raw);
+    const script = binding.value.transformScript ?? '';
+    if (!script.trim()) {
+      previewResult.value = JSON.stringify(raw, null, 2);
+      toast.success('预览成功');
+      return;
     }
-    previewResult.value = JSON.stringify(result, null, 2);
+    const res = await getScriptSandbox().runTransform(script, raw);
+    if (res.logs.length > 0) console.info('[数据预览] 脚本日志', res.logs);
+    if (!res.ok) {
+      previewResult.value = '执行错误：' + res.error;
+      toast.error('预览执行失败');
+      return;
+    }
+    previewResult.value = JSON.stringify(res.value === undefined ? raw : res.value, null, 2);
     toast.success('预览成功');
   } catch (err) {
     previewResult.value = '执行错误：' + (err as Error).message;
@@ -126,7 +128,12 @@ function preview(): void {
             placeholder="选择数据源"
             size="sm"
             class="flex1"
-            @update:model-value="(v: string | number | null)=>{binding.dataSourceId=String(v ?? '');commit()}"
+            @update:model-value="
+              (v: string | number | null) => {
+                binding.dataSourceId = String(v ?? '');
+                commit();
+              }
+            "
           />
         </div>
         <div class="dp-row" v-if="binding.dataSourceId">
@@ -136,7 +143,12 @@ function preview(): void {
             placeholder="设备 ID"
             size="sm"
             class="flex1"
-            @update:model-value="(v: string | number | null)=>{binding.deviceId=String(v ?? '');commit()}"
+            @update:model-value="
+              (v: string | number | null) => {
+                binding.deviceId = String(v ?? '');
+                commit();
+              }
+            "
           />
         </div>
         <div class="dp-row" v-if="binding.dataSourceId">
@@ -146,7 +158,12 @@ function preview(): void {
             placeholder="propertyCode"
             size="sm"
             class="flex1"
-            @update:model-value="(v: string | number | null)=>{binding.propertyCode=String(v ?? '');commit()}"
+            @update:model-value="
+              (v: string | number | null) => {
+                binding.propertyCode = String(v ?? '');
+                commit();
+              }
+            "
           />
         </div>
       </div>
@@ -160,17 +177,25 @@ function preview(): void {
         <h4>字段映射（组件字段 ← 数据字段路径）</h4>
         <table class="map-table" v-if="dataFields.length">
           <thead>
-            <tr><th>组件字段</th><th>数据字段路径（a.b[0].c）</th></tr>
+            <tr>
+              <th>组件字段</th>
+              <th>数据字段路径（a.b[0].c）</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="f in dataFields" :key="f.key">
-              <td>{{ f.label }} <small>{{ f.key }}</small></td>
+              <td>
+                {{ f.label }}
+                <small>{{ f.key }}</small>
+              </td>
               <td>
                 <BaseInput
                   :model-value="binding.fieldMap?.[f.key] ?? ''"
                   placeholder="如 data.list"
                   size="sm"
-                  @update:model-value="(v: string | number | null)=>setFieldMap(f.key, String(v ?? ''))"
+                  @update:model-value="
+                    (v: string | number | null) => setFieldMap(f.key, String(v ?? ''))
+                  "
                 />
               </td>
             </tr>
@@ -188,7 +213,12 @@ function preview(): void {
             :min="0"
             :step="500"
             class="flex1"
-            @update:model-value="(v:number)=>{binding.refreshInterval=v;commit()}"
+            @update:model-value="
+              (v: number) => {
+                binding.refreshInterval = v;
+                commit();
+              }
+            "
           />
           <span class="dp-tip">0 = 仅推送</span>
         </div>
@@ -198,11 +228,24 @@ function preview(): void {
             :model-value="binding.transformScript ?? ''"
             :rows="4"
             placeholder="return { list: data.items.map(i=>({...})) }"
-            @update:model-value="(v: string | number | null)=>{binding.transformScript=String(v ?? '');commit()}"
+            @update:model-value="
+              (v: string | number | null) => {
+                binding.transformScript = String(v ?? '');
+                commit();
+              }
+            "
           />
         </div>
-        <BaseButton type="primary" size="sm" icon="play" :loading="previewing" @click="preview">预览数据</BaseButton>
-        <BaseTextarea v-if="previewResult" :model-value="previewResult" :rows="6" readonly class="preview-box" />
+        <BaseButton type="primary" size="sm" icon="play" :loading="previewing" @click="preview">
+          预览数据
+        </BaseButton>
+        <BaseTextarea
+          v-if="previewResult"
+          :model-value="previewResult"
+          :rows="6"
+          readonly
+          class="preview-box"
+        />
       </div>
     </template>
   </div>

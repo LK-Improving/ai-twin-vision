@@ -19,7 +19,8 @@ export interface WidgetRect {
 export interface PropSchemaField {
   key: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'color' | 'select' | 'json' | 'model' | 'image' | 'slider';
+  type:
+    'string' | 'number' | 'boolean' | 'color' | 'select' | 'json' | 'model' | 'image' | 'slider';
   default?: unknown;
   /** select 类型的候选项 */
   options?: Array<{ label: string; value: string | number }>;
@@ -60,7 +61,10 @@ export interface DataBinding {
   fieldMap?: Record<string, string>;
   /** 刷新间隔（ms），0 表示仅推送驱动 */
   refreshInterval?: number;
-  /** 数据后处理脚本（沙箱执行，入参 data，返回处理后的数据） */
+  /**
+   * 数据后处理脚本（在 Worker 沙箱内执行，入参 data，返回处理后的数据）。
+   * 超时或报错时回退原始数据，不阻断其余节点刷新。
+   */
   transformScript?: string;
 }
 
@@ -82,7 +86,10 @@ export enum ActionType {
   REQUEST_API = 'REQUEST_API',
   /** 设置全局变量 */
   SET_VARIABLE = 'SET_VARIABLE',
-  /** 执行自定义脚本（沙箱） */
+  /**
+   * 执行自定义脚本（Worker 沙箱）：可用 ctx 能力白名单（viewer / nodes / getVar / setVar /
+   * request / openUrl 等），取值类能力为异步，需 await。
+   */
   RUN_SCRIPT = 'RUN_SCRIPT',
 }
 

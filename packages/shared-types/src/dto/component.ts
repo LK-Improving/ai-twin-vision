@@ -22,7 +22,11 @@ export interface ComponentListItem {
 export interface ComponentDetail extends ComponentListItem {
   description?: string | null;
   configSchema: ComponentConfigSchema;
-  /** 自定义组件源码（沙箱运行） */
+  /**
+   * 自定义组件源码。
+   * 注意：当前渲染层仅从内置组件注册表取件，本字段尚无执行入口；
+   * 一旦启用，必须经由前端脚本沙箱（Worker realm + 能力白名单）执行，禁止直接 new Function。
+   */
   sourceCode?: string | null;
 }
 

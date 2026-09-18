@@ -5,30 +5,40 @@
  * - 由 PreviewView 在节点渲染后调用 bindDomEvents / bindViewer 完成事件源接线。
  * - fire(sourceId, eventName) 收集该源该事件的全部绑定，按 actions 顺序执行。
  * - 每个动作支持 condition（条件表达式）与 delay（延迟毫秒）。
- * - RUN_SCRIPT 用 new Function 包裹在受限作用域执行，仅能访问注入的 ctx 与 data。
+ * - 条件表达式与 RUN_SCRIPT 一律交给脚本沙箱（Worker realm）执行：
+ *   脚本既拿不到 window/document，也拿不到 viewer 本体，只能通过能力白名单发起调用。
  */
-import type { TwinViewer } from '@dt/rendering-engine';
 import type { EventBinding, EventAction, WidgetNode } from '@dt/shared-types';
 import { ActionType } from '@dt/shared-types';
+import { getScriptSandbox, type CapabilityHost, type ScriptSandbox } from '@/sandbox';
 
 export interface RuntimeContext {
-  viewer: TwinViewer | null;
+  viewer: import('@dt/rendering-engine').TwinViewer | null;
   /** 变量读取 */
   getVar: (key: string) => unknown;
   /** 变量写入 */
   setVar: (key: string, value: unknown) => void;
+  /** 变量全量快照（供沙箱作为 ctx.variables 初值；缺省时按空对象处理） */
+  getVars?: () => Record<string, unknown>;
   /** 节点表（id → 响应式节点），用于可见性切换与数据注入 */
   nodes: Map<string, WidgetNode>;
   /** 运行时根容器，用于 DOM 类动作（OPEN_PANEL / CALL_COMPONENT 派发） */
   container: HTMLElement | null;
   /** 请求封装（由上层传入 http 实例，已解包 ApiResponse） */
-  request: <T = unknown>(url: string, method?: 'GET' | 'POST' | 'PUT' | 'DELETE', body?: unknown) => Promise<T>;
+  request: <T = unknown>(
+    url: string,
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    body?: unknown,
+  ) => Promise<T>;
 }
 
 /** 从对象按路径取值，支持 a.b[0].c */
 function getByPath(obj: unknown, path: string): unknown {
   if (obj == null) return undefined;
-  const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+  const parts = path
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .filter(Boolean);
   let cur: any = obj;
   for (const p of parts) {
     if (cur == null) return undefined;
@@ -40,9 +50,11 @@ function getByPath(obj: unknown, path: string): unknown {
 export class EventRuntime {
   private ctx: RuntimeContext;
   private handlers: Array<() => void> = [];
+  private sandbox: ScriptSandbox;
 
-  constructor(ctx: RuntimeContext) {
+  constructor(ctx: RuntimeContext, sandbox: ScriptSandbox = getScriptSandbox()) {
     this.ctx = ctx;
+    this.sandbox = sandbox;
   }
 
   /**
@@ -59,7 +71,9 @@ export class EventRuntime {
     ];
     for (const ev of events) {
       const listener = (e: Event) => {
-        const el = (e.currentTarget as HTMLElement)?.closest('[data-node-id]') as HTMLElement | null;
+        const el = (e.currentTarget as HTMLElement)?.closest(
+          '[data-node-id]',
+        ) as HTMLElement | null;
         const id = el?.getAttribute('data-node-id');
         if (id) this.fire(id, ev.name);
       };
@@ -99,13 +113,17 @@ export class EventRuntime {
   private async runAction(action: EventAction, _index: number): Promise<void> {
     const delay = action.delay ?? 0;
     if (action.condition && action.condition.trim()) {
-      try {
-        const fn = new Function('ctx', 'data', `return (${action.condition});`);
-        const pass = fn(this.buildCtx(), undefined);
-        if (!pass) return;
-      } catch {
-        return; // 条件表达式出错则跳过该动作
+      // 条件表达式在沙箱内求值：出错或超时按「不放行」处理，与旧行为一致
+      const res = await this.sandbox.evalExpression(
+        action.condition,
+        undefined,
+        this.variablesSnapshot(),
+      );
+      if (!res.ok) {
+        if (res.logs.length > 0) console.info('[event-runtime] 条件脚本日志', res.logs);
+        return;
       }
+      if (!res.value) return;
     }
     await new Promise<void>((r) => setTimeout(r, delay));
     switch (action.type as ActionType) {
@@ -134,23 +152,43 @@ export class EventRuntime {
         this.setVariable(action);
         break;
       case ActionType.RUN_SCRIPT:
-        this.runScript(action);
+        await this.runScript(action);
         break;
     }
   }
 
-  private buildCtx(): Record<string, unknown> {
+  /** 变量快照：作为沙箱内 ctx.variables 的初值 */
+  private variablesSnapshot(): Record<string, unknown> {
+    return this.ctx.getVars?.() ?? {};
+  }
+
+  /**
+   * 能力宿主：脚本对页面的一切影响都经由此处，且只交出纯数据。
+   * viewer / node 实例本身绝不跨沙箱边界。
+   */
+  private buildHost(): CapabilityHost {
     return {
       viewer: this.ctx.viewer,
-      variables: new Proxy(
-        {},
-        {
-          get: (_t, k) => this.ctx.getVar(String(k)),
-          set: (_t, k, v) => (this.ctx.setVar(String(k), v), true),
-        },
-      ),
+      getVar: (key) => this.ctx.getVar(key),
+      setVar: (key, value) => this.ctx.setVar(key, value),
       nodes: this.ctx.nodes,
+      container: this.ctx.container,
+      // 调用名已由能力层校验过方法名，此处仅做类型收窄
+      request: (url, method, body) =>
+        this.ctx.request(
+          url,
+          (method as 'GET' | 'POST' | 'PUT' | 'DELETE' | undefined) ?? 'GET',
+          body,
+        ),
+      setEntityVisible: (id, visible) => this.applyEntityVisible(id, visible),
+      isEntityVisible: (id) => this.isEntityVisible(id),
     };
+  }
+
+  /** 三维实体可见性：统一走本方法，保证状态表与引擎调用不分叉 */
+  private applyEntityVisible(id: string, visible: boolean): void {
+    this.entityVisibility.set(id, visible);
+    this.ctx.viewer?.setEntityVisible(id, visible);
   }
 
   private callComponent(action: EventAction): void {
@@ -159,7 +197,9 @@ export class EventRuntime {
     const el = this.ctx.container.querySelector(`[data-node-id="${id}"]`);
     if (el) {
       // 组件若监听 dt-action 自定义事件即可响应（如 refresh）
-      el.dispatchEvent(new CustomEvent('dt-action', { detail: action.params?.action ?? 'refresh', bubbles: true }));
+      el.dispatchEvent(
+        new CustomEvent('dt-action', { detail: action.params?.action ?? 'refresh', bubbles: true }),
+      );
     }
     // 三维实例：尝试触发引擎可见性无关的动作时暂无通用接口，记录即可
     void this.ctx.nodes.get(id);
@@ -176,8 +216,7 @@ export class EventRuntime {
       return;
     }
     // 三维实体
-    this.ctx.viewer?.setEntityVisible(id, !this.isEntityVisible(id));
-    this.entityVisibility.set(id, !this.isEntityVisible(id));
+    this.applyEntityVisible(id, !this.isEntityVisible(id));
   }
   private entityVisibility = new Map<string, boolean>();
   private isEntityVisible(id: string): boolean {
@@ -186,7 +225,14 @@ export class EventRuntime {
 
   private flyTo(action: EventAction): void {
     const view = action.params?.view as
-      | { longitude: number; latitude: number; height: number; heading?: number; pitch?: number; roll?: number }
+      | {
+          longitude: number;
+          latitude: number;
+          height: number;
+          heading?: number;
+          pitch?: number;
+          roll?: number;
+        }
       | undefined;
     if (view) this.ctx.viewer?.flyTo(view);
   }
@@ -232,16 +278,12 @@ export class EventRuntime {
     this.ctx.setVar(key, action.params?.value);
   }
 
-  private runScript(action: EventAction): void {
+  private async runScript(action: EventAction): Promise<void> {
     const script = (action.params?.script as string) ?? '';
     if (!script.trim()) return;
-    try {
-      // 安全边界：仅注入 ctx（含 variables / viewer / nodes），不暴露 window/document
-      const fn = new Function('ctx', `"use strict";\n${script}`);
-      fn(this.buildCtx());
-    } catch (err) {
-      console.warn('[event-runtime] RUN_SCRIPT 执行失败', err);
-    }
+    const res = await this.sandbox.runScript(script, this.buildHost(), this.variablesSnapshot());
+    if (res.logs.length > 0) console.info('[event-runtime] 脚本日志', res.logs);
+    if (!res.ok) console.warn('[event-runtime] RUN_SCRIPT 执行失败', res.error);
   }
 
   dispose(): void {
