@@ -50,12 +50,27 @@ interface Pending {
   timeoutMs: number;
 }
 
+/** 沙箱构造选项 */
+export interface SandboxOptions {
+  /**
+   * Worker 工厂。缺省使用包内 sandbox.worker.ts（由 Vite 的 ?worker 导入打包）；
+   * 非 Vite 环境（其他打包器、Node 单测）可注入自有 Worker 构造。
+   */
+  workerFactory?: () => Worker;
+}
+
 export class ScriptSandbox {
+  /** Worker 工厂：默认用包内 sandbox.worker.ts（需 Vite 构建），可由注入方覆盖 */
+  private readonly workerFactory: () => Worker;
   private shared: Worker | null = null;
   private seq = 0;
   private pending = new Map<number, Pending>();
   /** execId → 能力宿主：并发脚本各自持有，避免调用串台 */
   private hosts = new Map<number, CapabilityHost>();
+
+  constructor(options: SandboxOptions = {}) {
+    this.workerFactory = options.workerFactory ?? (() => new SandboxWorker());
+  }
 
   /** 数据转换脚本：入参 data，返回值即最终数据 */
   runTransform(
@@ -224,7 +239,7 @@ export class ScriptSandbox {
     if (typeof Worker === 'undefined') {
       throw new Error('当前环境不支持 Web Worker，脚本沙箱已拒绝执行');
     }
-    const worker = new SandboxWorker();
+    const worker = this.workerFactory();
     worker.onmessage = (event: MessageEvent) => void this.onMessage(event, worker);
     worker.onerror = (event: ErrorEvent) => this.onFatal(worker, event.message);
     return worker;
@@ -291,9 +306,12 @@ export class ScriptSandbox {
 
 let singleton: ScriptSandbox | null = null;
 
-/** 全局沙箱单例：同一页面共享数据线程池，避免多组件各自起线程 */
-export function getScriptSandbox(): ScriptSandbox {
-  if (!singleton) singleton = new ScriptSandbox();
+/**
+ * 全局沙箱单例：同一页面共享数据线程池，避免多组件各自起线程。
+ * 仅首次调用时的 options 生效（后续调用返回同一实例）。
+ */
+export function getScriptSandbox(options?: SandboxOptions): ScriptSandbox {
+  if (!singleton) singleton = new ScriptSandbox(options);
   return singleton;
 }
 

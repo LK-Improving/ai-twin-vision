@@ -7,13 +7,29 @@
  *   （一旦交出，脚本可顺 `obj.constructor.constructor('return this')()` 摸回宿主 realm）；
  * - 网络能力限定同源路径，禁止脚本借宿主 http 实例（带鉴权头）访问外部地址。
  */
-import type { TwinViewer } from '@dt/rendering-engine';
 import type { WidgetNode } from '@dt/shared-types';
 import { CAPABILITY_ALLOWLIST } from './protocol';
 
+/**
+ * 引擎视图的最小能力面。
+ *
+ * 刻意不 import @dt/rendering-engine：本包作为中台能力层不应耦合具体渲染引擎，
+ * 且避免把 Cesium/Three 的类型链引入沙箱。采用方法声明形式（而非函数属性）
+ * 以保持参数双变性，真实 TwinViewer 可结构化满足本接口。
+ */
+export interface ViewerLike {
+  flyTo(view: Record<string, unknown>, duration?: number): void;
+  flyToEntity(id: string, duration?: number): void;
+  getCameraView(): unknown;
+  highlight(id: string, color?: string): void;
+  clearHighlight(): void;
+  setEntityVisible(id: string, visible: boolean): void;
+  getStats(): unknown;
+}
+
 /** 宿主需提供的运行时能力载体（由 EventRuntime 组装，保持状态单源） */
 export interface CapabilityHost {
-  viewer: TwinViewer | null;
+  viewer: ViewerLike | null;
   getVar: (key: string) => unknown;
   setVar: (key: string, value: unknown) => void;
   /** 节点表：id → 响应式节点 */
@@ -113,7 +129,7 @@ export async function dispatchCapability(
       if (typeof a0 === 'string') {
         host.viewer.flyToEntity(a0);
       } else if (a0 && typeof a0 === 'object') {
-        host.viewer.flyTo(jsonSafe(a0) as Parameters<TwinViewer['flyTo']>[0]);
+        host.viewer.flyTo(jsonSafe(a0) as Parameters<ViewerLike['flyTo']>[0]);
       } else {
         throw new Error('flyTo 需要目标实体 id 或视角对象');
       }

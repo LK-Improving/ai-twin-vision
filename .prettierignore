@@ -1,0 +1,16 @@
+# 生成物与第三方产物不做 prettier 格式化：
+# 这些文件由工具产出或被工具解析，重排只会制造无意义 diff（pnpm 也会重新覆盖回去）。
+pnpm-lock.yaml
+package-lock.json
+**/dist/**
+**/coverage/**
+**/*.tsbuildinfo
+uploads/**
+docker/data/**
+.workbuddy/**
+
+# 脚本生成的数据（由 scripts/mk_city_model.mjs 以 1 空格缩进产出）
+scripts/city-pois.json
+
+# 基准架构文档由 docx/pdf 同源导出，只在 Word 侧维护
+docs/企业级数字孪生低代码平台架构设计与实践.md

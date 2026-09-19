@@ -9,9 +9,12 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dt/code-editor": "workspace:*",
+    "@dt/data-processor": "workspace:*",
+    "@dt/layout-engine": "workspace:*",
     "@dt/rendering-engine": "workspace:*",
     "@dt/shared-types": "workspace:*",
     "@dt/widgets": "workspace:*",

@@ -25,7 +25,13 @@
       "@dt/rendering-engine": ["packages/rendering-engine/src/index.ts"],
       "@dt/rendering-engine/*": ["packages/rendering-engine/src/*"],
       "@dt/widgets": ["packages/widgets/src/index.ts"],
-      "@dt/widgets/*": ["packages/widgets/src/*"]
+      "@dt/widgets/*": ["packages/widgets/src/*"],
+      "@dt/layout-engine": ["packages/layout-engine/src/index.ts"],
+      "@dt/layout-engine/*": ["packages/layout-engine/src/*"],
+      "@dt/data-processor": ["packages/data-processor/src/index.ts"],
+      "@dt/data-processor/*": ["packages/data-processor/src/*"],
+      "@dt/code-editor": ["packages/code-editor/src/index.ts"],
+      "@dt/code-editor/*": ["packages/code-editor/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "build", "coverage"]

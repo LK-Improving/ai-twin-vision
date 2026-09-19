@@ -1,0 +1,28 @@
+{
+  "name": "@dt/layout-engine",
+  "version": "1.0.0",
+  "description": "企业级数字孪生低代码平台 — 画布布局引擎（坐标换算 / 拖拽 / 八向缩放 / 对齐吸附）",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts",
+    "./vue": "./src/vue.ts"
+  },
+  "scripts": {
+    "build": "echo \"consumed as source via vite alias\"",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "vue": "^3.4.38",
+    "vue-tsc": "^2.1.6"
+  },
+  "license": "MIT"
+}

@@ -16,6 +16,15 @@ export default defineConfig({
       '@dt/rendering-engine': fileURLToPath(
         new URL('../../../packages/rendering-engine/src', import.meta.url),
       ),
+      '@dt/layout-engine': fileURLToPath(
+        new URL('../../../packages/layout-engine/src', import.meta.url),
+      ),
+      '@dt/data-processor': fileURLToPath(
+        new URL('../../../packages/data-processor/src', import.meta.url),
+      ),
+      '@dt/code-editor': fileURLToPath(
+        new URL('../../../packages/code-editor/src', import.meta.url),
+      ),
       '@dt/widgets': fileURLToPath(new URL('../../../packages/widgets/src', import.meta.url)),
     },
   },

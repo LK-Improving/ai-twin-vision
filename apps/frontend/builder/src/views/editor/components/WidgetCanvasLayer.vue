@@ -7,6 +7,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { WidgetRenderer } from '@dt/widgets';
+import { alignRect, type Rect } from '@dt/layout-engine';
 import { useEditorStore } from '@/stores/editor';
 import { useNodeDrag, type DragItem } from '@/composables/useEditorDnd';
 import type { WidgetNode, WidgetRect } from '@dt/shared-types';
@@ -21,8 +22,6 @@ export interface GuideLine {
   /** 设计坐标系下的位置 */
   position: number;
 }
-
-const SNAP = 5;
 
 /** 顶层 2D 节点 */
 const nodes = computed(() => page.value.nodes);
@@ -42,66 +41,37 @@ const drag = useNodeDrag({
   },
 });
 
-/** 计算与其它节点的边缘/中心对齐参考线，并做吸附 */
+/**
+ * 对齐参考线与吸附：几何计算全部交给 @dt/layout-engine，本处只做「取其它节点 + 类型适配」。
+ *
+ * 行为一致性说明：useNodeDrag 的 onMove 只交出 { x, y }，因此这里宽高按 0 参与计算，
+ * 与上提前完全一致（副作用：中心线/右边等价于左边对齐）。
+ * 要拿到完整对齐效果，需把节点当前 rect 的宽高一起传入——已记入迭代清单待办。
+ */
 function computeGuides(
   draggedId: string,
   rect: Partial<WidgetRect>,
 ): { snapped: Partial<WidgetRect>; guides: GuideLine[] } {
-  const others = page.value.nodes.filter((n) => n.id !== draggedId);
-  if (!others.length) return { snapped: rect, guides: [] };
-  const rx = rect.x ?? 0;
-  const ry = rect.y ?? 0;
-  const rw = rect.width ?? 0;
-  const rh = rect.height ?? 0;
-  const edges = {
-    left: rx,
-    cx: rx + rw / 2,
-    right: rx + rw,
-    top: ry,
-    cy: ry + rh / 2,
-    bottom: ry + rh,
+  const others: Rect[] = page.value.nodes
+    .filter((n) => n.id !== draggedId)
+    .map((n) => ({ x: n.rect.x, y: n.rect.y, width: n.rect.width, height: n.rect.height }));
+  const target: Rect = {
+    x: rect.x ?? 0,
+    y: rect.y ?? 0,
+    width: rect.width ?? 0,
+    height: rect.height ?? 0,
   };
-  const guideSet = new Set<string>();
-  const guides: GuideLine[] = [];
-  let nx = rx;
-  let ny = ry;
-  const trySnap = (val: number, target: number, axis: 'x' | 'y', key: 'left' | 'cx' | 'right' | 'top' | 'cy' | 'bottom') => {
-    if (Math.abs(val - target) <= SNAP) {
-      const tag = `${axis}:${target.toFixed(1)}`;
-      if (!guideSet.has(tag)) {
-        guideSet.add(tag);
-        guides.push({ orientation: axis === 'x' ? 'v' : 'h', position: target });
-      }
-      if (axis === 'x') nx = target - (key === 'cx' ? rw / 2 : key === 'right' ? rw : 0);
-      else ny = target - (key === 'cy' ? rh / 2 : key === 'bottom' ? rh : 0);
-    }
-  };
-  for (const o of others) {
-    const ox = o.rect.x;
-    const oy = o.rect.y;
-    const ow = o.rect.width;
-    const oh = o.rect.height;
-    const oe = { left: ox, cx: ox + ow / 2, right: ox + ow, top: oy, cy: oy + oh / 2, bottom: oy + oh };
-    trySnap(edges.left, oe.left, 'x', 'left');
-    trySnap(edges.left, oe.cx, 'x', 'left');
-    trySnap(edges.left, oe.right, 'x', 'left');
-    trySnap(edges.cx, oe.cx, 'x', 'cx');
-    trySnap(edges.right, oe.left, 'x', 'right');
-    trySnap(edges.right, oe.right, 'x', 'right');
-    trySnap(edges.top, oe.top, 'y', 'top');
-    trySnap(edges.top, oe.cy, 'y', 'top');
-    trySnap(edges.top, oe.bottom, 'y', 'top');
-    trySnap(edges.cy, oe.cy, 'y', 'cy');
-    trySnap(edges.bottom, oe.bottom, 'y', 'bottom');
-  }
-  return { snapped: { ...rect, x: nx, y: ny }, guides };
+  const { snapped, guides } = alignRect(target, others);
+  return { snapped: { ...rect, x: snapped.x, y: snapped.y }, guides };
 }
 
 function onNodeMouseDown(e: MouseEvent, node: WidgetNode): void {
   if (e.button !== 0) return;
   if (e.ctrlKey || e.metaKey) {
     const set = new Set(selectedIds.value);
-    set.has(node.id) ? set.delete(node.id) : set.add(node.id);
+    // 多选切换：已选则移除，未选则加入
+    if (set.has(node.id)) set.delete(node.id);
+    else set.add(node.id);
     store.selectNodes([...set]);
   } else if (!selectedIds.value.includes(node.id)) {
     store.selectNodes([node.id]);
@@ -129,6 +99,14 @@ function hitStyle(node: WidgetNode): Record<string, string> {
     display: node.visible === false ? 'none' : 'block',
   };
 }
+
+/** 组件名标签文案：没有名字就退化为类型码，保证每个块都有标识 */
+function labelText(node: WidgetNode): string {
+  return node.name || String(node.type);
+}
+
+/** 节点贴画布顶边时标签翻到块内，避免被画布视口裁掉 */
+const TOP_EDGE = 22;
 </script>
 
 <template>
@@ -137,12 +115,16 @@ function hitStyle(node: WidgetNode): Record<string, string> {
       v-for="node in nodes"
       :key="node.id"
       class="node-hit"
-      :class="{ 'is-selected': selectedIds.includes(node.id) }"
+      :class="{
+        'is-selected': selectedIds.includes(node.id),
+        'is-top-edge': node.rect.y < TOP_EDGE,
+      }"
       :data-id="node.id"
       :style="hitStyle(node)"
       @mousedown="onNodeMouseDown($event, node)"
     >
-      <WidgetRenderer :node="node" />
+      <span class="node-label">{{ labelText(node) }}</span>
+      <WidgetRenderer :node="node" fill />
     </div>
   </div>
 </template>
@@ -151,6 +133,8 @@ function hitStyle(node: WidgetNode): Record<string, string> {
 .widget-layer {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 .node-hit {
   /* 命中区捕获交互，内部组件本身不拦截指针 */
@@ -161,5 +145,44 @@ function hitStyle(node: WidgetNode): Record<string, string> {
 .node-hit.is-selected {
   outline: 1px dashed rgba(0, 184, 217, 0.6);
   outline-offset: 1px;
+}
+/* 组件名标签：贴在块左上角外侧，像剪辑软件里每个片段的标签 */
+.node-label {
+  position: absolute;
+  left: -1px;
+  top: -19px;
+  max-width: 100%;
+  height: 19px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(0, 200, 224, 0.34);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: rgba(11, 18, 32, 0.92);
+  color: #8fe6f5;
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+/* 贴顶边的节点：标签翻到块内，避免被画布视口裁掉 */
+.node-hit.is-top-edge .node-label {
+  top: 0;
+  border-radius: 4px;
+  border-bottom: 1px solid rgba(0, 200, 224, 0.34);
+}
+.node-hit.is-selected .node-label {
+  border-color: rgba(0, 234, 255, 0.75);
+  background: rgba(0, 60, 78, 0.95);
+  color: #d9f8ff;
+}
+.node-hit.is-selected.is-top-edge .node-label {
+  border-bottom-color: rgba(0, 234, 255, 0.75);
 }
 </style>

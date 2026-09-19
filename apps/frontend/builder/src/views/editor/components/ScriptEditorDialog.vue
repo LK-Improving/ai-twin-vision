@@ -1,25 +1,20 @@
 <script setup lang="ts">
 /**
- * 脚本编辑弹窗：等宽字体 + 行号，用于编写沙箱执行的转换/事件脚本。
+ * 脚本编辑弹窗：嵌入式代码编辑器（@dt/code-editor，CodeMirror 6），
+ * 用于编写沙箱执行的转换/事件脚本。
  * 安全边界：脚本在独立 Worker realm 内执行，无 window/document/fetch/localStorage；
  * 对页面的影响只能经 ctx 能力白名单。本弹窗在保存前跑一次静态守卫，
  * 避免把「运行时必定被拒绝」的脚本存进场景 DSL。
  */
 import { computed, ref, watch } from 'vue';
+import { CodeEditor } from '@dt/code-editor';
 import BaseModal from '@/components/ui/BaseModal.vue';
-import BaseTextarea from '@/components/ui/BaseTextarea.vue';
 import { formatGuardIssues, scanScript, SCRIPT_API_DOC, SCRIPT_ENV_NOTES } from '@/sandbox';
 
 const props = defineProps<{ visible: boolean; initial?: string }>();
 const emit = defineEmits<{ 'update:visible': [v: boolean]; save: [script: string] }>();
 
 const code = ref(props.initial ?? '');
-const lineNumbers = computed(() =>
-  code.value
-    .split('\n')
-    .map((_, i) => i + 1)
-    .join('\n'),
-);
 
 /** 静态守卫结果：命中即禁止保存（运行时会同样被拒，先给出可读原因） */
 const issues = computed(() => scanScript(code.value));
@@ -52,17 +47,11 @@ function save(): void {
     @confirm="save"
     @cancel="close"
   >
-    <div class="script-editor">
-      <div class="se-gutter">
-        <pre>{{ lineNumbers }}</pre>
-      </div>
-      <BaseTextarea
-        v-model="code"
-        :rows="16"
-        class="se-input"
-        placeholder="// 入参 data；事件脚本可用 await ctx.xxx()，return 处理结果"
-      />
-    </div>
+    <CodeEditor
+      v-model="code"
+      height="360px"
+      placeholder="// 入参 data；事件脚本可用 await ctx.xxx()，return 处理结果"
+    />
     <p v-if="blocked" class="se-guard">守卫拦截：{{ formatGuardIssues(issues) }}</p>
     <details class="se-doc">
       <summary>可用能力清单（共 {{ SCRIPT_API_DOC.length }} 项）</summary>
@@ -80,41 +69,6 @@ function save(): void {
 </template>
 
 <style scoped>
-.script-editor {
-  display: flex;
-  border: 1px solid #e3e8ef;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #0b1220;
-}
-.se-gutter {
-  background: #111a2e;
-  color: #4b6584;
-  padding: 8px 8px 8px 10px;
-  font-family: monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  text-align: right;
-  user-select: none;
-  border-right: 1px solid #1f2d3d;
-}
-.se-gutter pre {
-  margin: 0;
-}
-.se-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: #cfe8ff;
-  font-family: 'SFMono-Regular', Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.se-input :deep(textarea) {
-  background: transparent !important;
-  color: #cfe8ff !important;
-  font-family: monospace !important;
-}
 .se-guard {
   font-size: 12px;
   color: #d93025;
