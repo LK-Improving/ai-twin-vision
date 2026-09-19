@@ -27,6 +27,15 @@ logs/
 npm-debug.log*
 pnpm-debug.log*
 
+# 一次性调试产物（脚本运行捕获、vite 解析 config 时的临时文件）
+_tmp_*
+vite.config.ts.timestamp-*.mjs
+scripts/.tmp/
+
+# 验证截图与临时 dump（根目录以 _ 开头的产物）
+_*.png
+_*.json
+
 # editor
 .idea/
 .vscode/*
