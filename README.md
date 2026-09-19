@@ -71,30 +71,33 @@ pnpm dev:web                  # http://localhost:5173
 
 ## 常用命令
 
-| 命令                                       | 说明                                                          |
-| ------------------------------------------ | ------------------------------------------------------------- |
-| `pnpm typecheck`                           | 全量 TypeScript 类型检查                                      |
-| `pnpm lint` / `pnpm lint:fix`              | 逐个子项目 ESLint 检查 / 修复（`pnpm -r lint`，已全绿约 95s） |
-| `pnpm format`                              | Prettier 格式化                                               |
-| `pnpm build`                               | 全量构建                                                      |
-| `pnpm test`                                | 跑测试（无用例时通过）                                        |
-| `pnpm infra:down`                          | 停止基础设施                                                  |
-| `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                              |
+| 命令                                       | 说明                                              |
+| ------------------------------------------ | ------------------------------------------------- |
+| `pnpm typecheck`                           | 全量 TypeScript 类型检查                          |
+| `pnpm lint` / `pnpm lint:fix`              | 逐个子项目 + 根级配置 ESLint 检查 / 修复          |
+| `pnpm lint:style`                          | Stylelint：只管 CSS 语义问题，格式归 Prettier     |
+| `pnpm lint:spell`                          | cspell 拼写检查（代码与配置；中文文档正文不纳入） |
+| `pnpm format`                              | Prettier 格式化                                   |
+| `pnpm build`                               | 全量构建                                          |
+| `pnpm test`                                | 跑测试（无用例时通过）                            |
+| `pnpm infra:down`                          | 停止基础设施                                      |
+| `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                  |
 
 ## CI 流水线
 
 定义在 `.github/workflows/ci.yml`，与本地可跑的命令完全一致，不把只有 CI 能跑的黑盒当门禁：
 
-| Job         | 时机      | 内容                                                                                                                                                    |
-| ----------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`   | PR / main | `pnpm install --frozen-lockfile` → `pnpm -r typecheck` → `pnpm lint`（error 即失败）→ `pnpm -r test` → `pnpm -r build` → 产物体积棘轮 → 上传 dist 产物  |
-| `api-smoke` | main      | 起 Postgres(TimescaleDB) + Redis 服务，`cp .env.example .env.dev` → 构建后端 → `schema:init` → 启服务并断言 `/health` 与 `/auth/login` 拿到 accessToken |
-| `docker`    | main      | 两个 Dockerfile 各自 build；仅当配了 registry 变量与凭据才登录并推送                                                                                    |
+| Job         | 时机      | 内容                                                                                                                                                                                           |
+| ----------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`   | PR / main | `pnpm install --frozen-lockfile` → `pnpm -r typecheck` → `pnpm lint`（error 即失败）→ `pnpm lint:style` → `pnpm lint:spell` → `pnpm -r test` → `pnpm -r build` → 产物体积棘轮 → 上传 dist 产物 |
+| `api-smoke` | main      | 起 Postgres(TimescaleDB) + Redis 服务，`cp .env.example .env.dev` → 构建后端 → `schema:init` → 启服务并断言 `/health` 与 `/auth/login` 拿到 accessToken                                        |
+| `docker`    | main      | 两个 Dockerfile 各自 build；仅当配了 registry 变量与凭据才登录并推送                                                                                                                           |
 
 本地等价校验（CI 红之前先自己跑一遍）：
 
 ```bash
-pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm lint && pnpm -r test && pnpm -r build
+pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm lint && pnpm lint:style && pnpm lint:spell
+pnpm -r test && pnpm -r build
 node scripts/ci-size-report.mjs --budget scripts/size-budget.json
 ```
 

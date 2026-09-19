@@ -1,7 +1,7 @@
 name: CI
 
 # 触发策略（迭代 4.2）：
-# - PR 与 main 推送：跑完整质量门禁（类型 / lint / 单测 / 构建 / 体积棘轮）
+# - PR 与 main 推送：跑完整质量门禁（类型 / lint / 样式 / 拼写 / 单测 / 构建 / 体积棘轮）
 # - main 推送额外做「服务冒烟」：真起 Postgres+Redis，跑 schema:init 后打健康检查与登录接口
 # - Docker 镜像只 build 不 push：推送需要仓库 secrets，缺省时自动降级为构建校验
 on:
@@ -42,6 +42,12 @@ jobs:
 
       - name: Lint（error 即失败）
         run: pnpm lint
+
+      - name: 样式检查（Stylelint，只管 CSS 语义问题，格式归 Prettier）
+        run: pnpm lint:style
+
+      - name: 拼写检查（cspell，覆盖代码与配置，中文文档正文不纳入）
+        run: pnpm lint:spell
 
       - name: 单元测试
         run: pnpm -r test
