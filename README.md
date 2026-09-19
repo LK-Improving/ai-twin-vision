@@ -5,15 +5,15 @@ Cesium（宏观 GIS）+ Three.js（微观精细模型）双引擎融合的数字
 
 ## 技术栈
 
-| 层次 | 选型 |
-| --- | --- |
-| 包管理 | pnpm workspace（Monorepo） |
-| 前端 | Vue 3.4 + TypeScript 5.5 + Vite 5 + TailwindCSS 3 + Pinia |
+| 层次     | 选型                                                          |
+| -------- | ------------------------------------------------------------- |
+| 包管理   | pnpm workspace（Monorepo）                                    |
+| 前端     | Vue 3.4 + TypeScript 5.5 + Vite 5 + TailwindCSS 3 + Pinia     |
 | 三维引擎 | Cesium 1.121（GIS/3D Tiles）+ Three.js 0.168（GLTF/PBR/特效） |
-| 图表 | ECharts 5.5 |
-| 后端 | NestJS 10 + TypeORM 0.3 + PostgreSQL 15 + Redis 7 |
-| 认证 | JWT 双 Token（access 15min / refresh 7d）+ RBAC |
-| 文件存储 | 本地磁盘（MinIO/S3 预留） |
+| 图表     | ECharts 5.5                                                   |
+| 后端     | NestJS 10 + TypeORM 0.3 + PostgreSQL 15 + Redis 7             |
+| 认证     | JWT 双 Token（access 15min / refresh 7d）+ RBAC               |
+| 文件存储 | 本地磁盘（MinIO/S3 预留）                                     |
 
 ## 目录结构
 
@@ -54,31 +54,57 @@ pnpm db:seed                  # 结构与种子数据（幂等）
 
 演示账号：
 
-| 账号 | 密码 | 角色 |
-| --- | --- | --- |
-| admin | Admin@123 | 超级管理员 |
-| developer | Dev@123 | 开发者 |
-| viewer | View@123 | 访客 |
+| 账号      | 密码      | 角色       |
+| --------- | --------- | ---------- |
+| admin     | Admin@123 | 超级管理员 |
+| developer | Dev@123   | 开发者     |
+| viewer    | View@123  | 访客       |
 
 ### 4. 启动开发服务
 
 ```bash
 pnpm dev                      # 前后端并行
 # 或分别启动
-pnpm dev:api                  # http://localhost:3000/api/v1/docs
+pnpm dev:api                  # http://localhost:3001/api/v1（接口文档 /api/docs）
 pnpm dev:web                  # http://localhost:5173
 ```
 
 ## 常用命令
 
-| 命令 | 说明 |
-| --- | --- |
-| `pnpm typecheck` | 全量 TypeScript 类型检查 |
-| `pnpm lint` / `pnpm lint:fix` | ESLint 检查 / 修复 |
-| `pnpm format` | Prettier 格式化 |
-| `pnpm build` | 全量构建 |
-| `pnpm test` | 跑测试（无用例时通过） |
-| `pnpm infra:down` | 停止基础设施 |
+| 命令                                       | 说明                                                          |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `pnpm typecheck`                           | 全量 TypeScript 类型检查                                      |
+| `pnpm lint` / `pnpm lint:fix`              | 逐个子项目 ESLint 检查 / 修复（`pnpm -r lint`，已全绿约 95s） |
+| `pnpm format`                              | Prettier 格式化                                               |
+| `pnpm build`                               | 全量构建                                                      |
+| `pnpm test`                                | 跑测试（无用例时通过）                                        |
+| `pnpm infra:down`                          | 停止基础设施                                                  |
+| `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                              |
+
+## CI 流水线
+
+定义在 `.github/workflows/ci.yml`，与本地可跑的命令完全一致，不把只有 CI 能跑的黑盒当门禁：
+
+| Job         | 时机      | 内容                                                                                                                                                    |
+| ----------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`   | PR / main | `pnpm install --frozen-lockfile` → `pnpm -r typecheck` → `pnpm lint`（error 即失败）→ `pnpm -r test` → `pnpm -r build` → 产物体积棘轮 → 上传 dist 产物  |
+| `api-smoke` | main      | 起 Postgres(TimescaleDB) + Redis 服务，`cp .env.example .env.dev` → 构建后端 → `schema:init` → 启服务并断言 `/health` 与 `/auth/login` 拿到 accessToken |
+| `docker`    | main      | 两个 Dockerfile 各自 build；仅当配了 registry 变量与凭据才登录并推送                                                                                    |
+
+本地等价校验（CI 红之前先自己跑一遍）：
+
+```bash
+pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm lint && pnpm -r test && pnpm -r build
+node scripts/ci-size-report.mjs --budget scripts/size-budget.json
+```
+
+需要配置的仓库变量/凭据（都不配也能跑，仅不推镜像）：
+
+- Variable `DOCKER_REGISTRY`；Secret `DOCKER_USERNAME` / `DOCKER_PASSWORD`
+- 体积预算：`scripts/size-budget.json`（含 10% 余量）；确实要涨时跑 `--update` 并在 PR 里说明
+
+已知未覆盖：浏览器端回归（脚本沙箱隔离、CodeMirror 渲染）需真实 Worker 与 GL 上下文，
+属迭代 5 的 Playwright e2e 任务，不在此流水线内（不假称已覆盖）。
 
 ## 架构要点
 
@@ -107,7 +133,7 @@ md5 命中即秒传。扩展名走白名单，路径做穿越校验，大小上�
 ## 阶段路线
 
 - **Phase 1（已完成）**：工程底座 + 共享契约 + 后端核心（认证/场景/组件/文件/数据/设备/日志/健康检查）
-  + 前端编辑器骨架（三栏编排、属性/数据/事件/样式面板、撤销重做）+ 运行时预览。
+  - 前端编辑器骨架（三栏编排、属性/数据/事件/样式面板、撤销重做）+ 运行时预览。
 - **Phase 2**：数据源网关深化（MQTT/OPC-UA/Modbus 协议栈）、WebSocket 实时推送、
   告警规则引擎、协同编辑（Yjs）与操作冲突合并。
 - **Phase 3**：模板市场、自定义组件沙箱执行、大屏发布与访问鉴权、

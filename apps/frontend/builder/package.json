@@ -9,6 +9,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src --ext .ts,.vue",
+    "lint:fix": "eslint src --ext .ts,.vue --fix",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

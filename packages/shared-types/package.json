@@ -5,11 +5,14 @@
   "description": "前后端共享的接口契约：统一响应体、错误码、DTO 与业务枚举",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
     "clean": "rimraf dist"
   },
   "devDependencies": {

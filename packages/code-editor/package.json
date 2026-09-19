@@ -8,6 +8,7 @@
   "scripts": {
     "build": "echo \"consumed as source via vite alias\"",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src --ext .ts,.vue",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

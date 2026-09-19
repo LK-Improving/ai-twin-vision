@@ -8,6 +8,7 @@
   "scripts": {
     "build": "echo \"consumed as source via vite alias\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
     "test": "vitest run"
   },
   "dependencies": {

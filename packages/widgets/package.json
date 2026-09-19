@@ -7,7 +7,8 @@
   "types": "src/index.ts",
   "scripts": {
     "build": "echo \"consumed as source via vite alias\"",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src --ext .ts,.vue"
   },
   "dependencies": {
     "@dt/shared-types": "workspace:*",
