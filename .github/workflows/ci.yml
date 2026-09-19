@@ -144,6 +144,68 @@ jobs:
           echo "登录链路 OK（JWT + RBAC 种子账号）"
         working-directory: apps/backend/widget-server
 
+  migration:
+    name: 数据库迁移与漂移门禁
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quality
+    # 迁移门禁对 PR 也必须生效，不能只等合入 main
+    services:
+      postgres:
+        image: timescale/timescaledb:2.14.2-pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: digital_twin
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d digital_twin"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: 由模板生成环境
+        run: cp .env.example .env.dev
+
+      - name: 安装依赖与共享包
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @dt/shared-types build
+
+      # 验收点一：空库必须能只靠 migration 建出完整结构（不再依赖“全量 SQL 重放”）
+      - name: 空库执行基线迁移
+        run: pnpm db:migrate
+
+      - name: 断言版本记录与基线结构
+        run: |
+          set -euo pipefail
+          db() { psql "postgresql://postgres:root@localhost:5432/digital_twin" -Atc "$1"; }
+          versions=$(db 'select count(*) from sys_migrations')
+          tables=$(db "select count(*) from information_schema.tables where table_schema='public'")
+          pt=$(db "select count(*) from information_schema.columns where column_name='publish_token'")
+          echo "sys_migrations=$versions tables=$tables publish_token=$pt"
+          [ "$versions" -ge 1 ] || { echo '迁移未写入版本记录' >&2; exit 1; }
+          [ "$tables" -ge 20 ] || { echo '基线未建出预期表数' >&2; exit 1; }
+          [ "$pt" = '1' ] || { echo '增量迁移的 publish_token 未生效' >&2; exit 1; }
+
+      - name: 种子数据可重复执行
+        run: |
+          set -euo pipefail
+          pnpm db:seed && pnpm db:seed
+          n=$(psql "postgresql://postgres:root@localhost:5432/digital_twin" -Atc 'select count(*) from sys_user')
+          echo "sys_user=$n"
+          [ "$n" -gt 0 ] || { echo '种子数据未写入' >&2; exit 1; }
+
+      # 验收点二：改了 entity 忘记新增 migration 时，这里会拦下
+      # （基线噪声已分类排除，实测净变更为 0，详见 scripts/check-migration-drift.mjs 头部说明）
+      - name: 实体与库结构漂移检查
+        run: pnpm db:check-drift
+
   docker:
     name: 镜像构建（${{ matrix.image }}）
     runs-on: ubuntu-latest

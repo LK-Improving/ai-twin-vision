@@ -18,12 +18,27 @@ export interface AppConfig {
     poolMax: number;
     logging: boolean;
     synchronize: boolean;
+    /** 应用启动时是否自动执行待处理迁移（默认 false） */
+    migrationsRun: boolean;
   };
   redis: {
     host: string;
     port: number;
     password?: string;
     db: number;
+  };
+  realtime: {
+    mqttIngest: {
+      enabled: boolean;
+      defaultBrokerUrl: string;
+      username?: string;
+      password?: string;
+      clientIdPrefix: string;
+      /** 设备在线状态落库节流窗口（毫秒） */
+      statusThrottleMs: number;
+    };
+    /** 大屏公开访问票据有效期（秒），用于 /screen/:token 的 WS 握手 */
+    screenTicketTtlSec: number;
   };
   jwt: {
     accessSecret: string;
@@ -80,12 +95,26 @@ export default (): AppConfig => ({
     poolMax: toNumber(process.env.DB_POOL_MAX, 20),
     logging: toBoolean(process.env.DB_LOGGING, false),
     synchronize: toBoolean(process.env.DB_SYNCHRONIZE, false),
+    // 默认不在应用启动时自动跑迁移：避免“重启意外改库”。
+    // 生产推荐显式打开（DB_MIGRATIONS_RUN=true）并配合部署前备份。
+    migrationsRun: toBoolean(process.env.DB_MIGRATIONS_RUN, false),
   },
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: toNumber(process.env.REDIS_PORT, 6379),
     password: process.env.REDIS_PASSWORD || undefined,
     db: toNumber(process.env.REDIS_DB, 0),
+  },
+  realtime: {
+    mqttIngest: {
+      enabled: toBoolean(process.env.MQTT_INGEST_ENABLED, true),
+      defaultBrokerUrl: process.env.MQTT_INGEST_BROKER_URL ?? 'mqtt://localhost:1883',
+      username: process.env.MQTT_INGEST_USERNAME || undefined,
+      password: process.env.MQTT_INGEST_PASSWORD || undefined,
+      clientIdPrefix: process.env.MQTT_INGEST_CLIENT_ID_PREFIX ?? 'dt-ingest',
+      statusThrottleMs: toNumber(process.env.MQTT_STATUS_THROTTLE_MS, 30_000),
+    },
+    screenTicketTtlSec: toNumber(process.env.SCREEN_TICKET_TTL_SEC, 7_200),
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET ?? 'dev_access_secret',

@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import dataSource from '../data-source';
 
 /**
- * 手动初始化数据库结构与种子数据。
+ * 手动初始化数据库结构与种子数据（**仅用于空库引导**）。
  * 适用于未使用 docker-entrypoint-initdb.d 的场景（如连接已有 PostgreSQL 实例）：
  *   pnpm --filter @dt/widget-server schema:init
+ *
+ * 注意（迭代 8.2）：本脚本不维护升级路径。已有库请一律用 `pnpm db:migrate`，
+ * 否则结构变更不会进入 sys_migrations 版本记录，也无法回滚与追责。
  */
 async function main(): Promise<void> {
   const sqlDir = join(__dirname, '../sql');

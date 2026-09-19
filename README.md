@@ -48,9 +48,18 @@ pnpm build:pkg                # 先构建 shared-types
 
 ### 3. 初始化数据库
 
+结构演进以 **migration 为唯一通道**（迭代 8.2），`01_schema.sql` 是已冻结的基线快照：
+
 ```bash
-pnpm db:seed                  # 结构与种子数据（幂等）
+pnpm db:migrate               # 建表/升级（写入 sys_migrations 版本记录，可 revert）
+pnpm db:seed                  # 演示数据（幂等，可重复执行）
+pnpm db:status                # 查看已应用/待应用迁移
+pnpm db:check-drift           # 改了 entity 忘加 migration 时会拦下（净变更为 0 才通过）
 ```
+
+> 用 `pnpm infra:up` 拉起时，容器首次启动会自己执行 `docker-entrypoint-initdb.d` 里的基线 SQL；
+> 之后新增结构变更仍靠 `pnpm db:migrate` 追平（幂等，不会覆盖已有数据）。
+> `pnpm --filter @dt/widget-server schema:init` 仅用于空库一次性引导，不作为升级路径。
 
 演示账号：
 

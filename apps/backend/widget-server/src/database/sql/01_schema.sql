@@ -6,7 +6,11 @@
 --   3. 高频查询字段建索引，联合索引遵循最左前缀
 --   4. 字符集 UTF8（PostgreSQL 对应 utf8mb4 的完整 Unicode 支持）
 -- 该文件被 docker-entrypoint-initdb.d 首次启动自动执行，
--- 也可通过 pnpm --filter @dt/widget-server schema:init 手动执行。
+-- 也由基线迁移 src/database/migrations/*-InitSchema.ts 加载执行（单一真相，不复制副本）。
+--
+-- ⚠ 结构变更约定（迭代 8.2）：本文件是冻结的基线快照，禁止再直接往里加
+--   CREATE/ALTER 语句；任何新表、新列、改型一律新增 migration（pnpm migration:generate
+--   或手写），否则“新库走迁移、旧库走重放”会逐渐分叉，且无版本记录可查。
 -- =============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -159,10 +163,8 @@ COMMENT ON COLUMN biz_scene.engine_config IS 'Cesium 与 Three.js 引擎配置�
 COMMENT ON COLUMN biz_scene.layout IS '低代码 2D 大屏画布 Schema（节点树 + 事件编排）';
 COMMENT ON COLUMN biz_scene.status IS '状态：0-草稿，1-已发布，2-已归档';
 CREATE INDEX IF NOT EXISTS idx_scene_tenant_status ON biz_scene (tenant_id, status, updated_at DESC);
--- 幂等升级：CREATE TABLE IF NOT EXISTS 不会为已存在的表补列，
--- 在旧版本初始化的库上重放本脚本时需显式补齐，否则下方索引会因缺列报错。
-ALTER TABLE biz_scene ADD COLUMN IF NOT EXISTS publish_token VARCHAR(64);
--- 发布令牌唯一索引（NULL 不参与唯一性约束）
+-- 发布令牌唯一索引（NULL 不参与唯一性约束）。属于基线终态：
+-- 旧库升级由 migration 1789000060000 以 IF NOT EXISTS 幂等补齐，两处不矛盾。
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_publish_token ON biz_scene (publish_token) WHERE publish_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_scene_creator ON biz_scene (creator_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_scene_tenant_name ON biz_scene (tenant_id, name) WHERE deleted_at IS NULL;
@@ -265,8 +267,7 @@ CREATE TABLE IF NOT EXISTS biz_file (
 );
 COMMENT ON TABLE  biz_file IS '文件表：仅记录元数据与访问路径，二进制存于对象存储';
 COMMENT ON COLUMN biz_file.md5 IS '内容指纹（md5=32 或 sha256=64 十六进制），用于秒传与完整性校验';
--- 幂等升级：旧库 md5 列为 VARCHAR(32)，容纳不下 sha256 指纹，拓宽为 64（已是 64 时为空操作）
-ALTER TABLE biz_file ALTER COLUMN md5 TYPE VARCHAR(64);
+-- md5 列宽拓宽由 migration 1789000060000 负责（基线文件已冻结）
 CREATE INDEX IF NOT EXISTS idx_file_tenant_md5 ON biz_file (tenant_id, md5);
 CREATE INDEX IF NOT EXISTS idx_file_creator ON biz_file (creator_id, created_at DESC);
 

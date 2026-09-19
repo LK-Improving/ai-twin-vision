@@ -31,6 +31,9 @@
     "infra:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
     "iot:sim": "pnpm --filter @dt/widget-server exec node ../../../docker/iot-simulator.mjs",
     "db:migrate": "pnpm --filter @dt/widget-server migration:run",
+    "db:revert": "pnpm --filter @dt/widget-server migration:revert",
+    "db:status": "pnpm --filter @dt/widget-server migration:show",
+    "db:check-drift": "node scripts/check-migration-drift.mjs --strict",
     "db:seed": "pnpm --filter @dt/widget-server seed",
     "prepare": "husky || true"
   },
