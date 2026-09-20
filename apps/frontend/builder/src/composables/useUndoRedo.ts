@@ -52,7 +52,11 @@ export function useUndoRedo<T>(initial: T, options: UndoRedoOptions = {}): UndoR
   function push(snapshot: T, mergeKey?: string): void {
     const snap = deepClone(snapshot);
     const now = Date.now();
+    // 合并仅允许发生在栈顶：撤销到中途后紧跟的同 mergeKey 操作属于「新分支」，
+    // 必须走下方的截断 redo 分支，否则会改写历史槽位（迭代 5.2 修正）。
+    const atTop = index.value === stack.value.length - 1;
     const canMerge =
+      atTop &&
       mergeKey != null &&
       mergeKey === lastMergeKey.value &&
       now - lastPushAt.value <= mergeWindowMs;

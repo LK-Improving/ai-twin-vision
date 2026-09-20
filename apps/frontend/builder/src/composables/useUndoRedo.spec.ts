@@ -137,27 +137,45 @@ describe('useUndoRedo', () => {
 });
 
 /**
- * 已知缺陷（用测试钉住现状，不是认可该行为）：
- * 撤销到中途后，若紧接着一次带相同 mergeKey 且在合并窗内的 push，
- * 会走「覆盖当前 index」分支，把历史里的旧快照改写掉，而不是截断 redo 分支。
- * 结果：撤销栈出现「过去状态被新值污染」+ redo 分支仍在，语义不一致。
- * 修复方向：canMerge 需附加 `index 位于栈顶` 条件（迭代 5 记录，改动会影响拖拽手感，单独提）。
+ * 迭代 5.2 修正的回归测试。
+ *
+ * 原行为（已修）：合并分支没有限制在栈顶，撤销到中途后紧跟一次同 mergeKey
+ * 且在窗内的 push，会走「覆盖当前 index」分支 —— 把历史里的旧快照改写掉，
+ * 而且 redo 分支不截断，表现为「回退一步把上一步的旧状态替掉了」。
+ * 下面两条分别钉住「新分支必须另起一步 + 截断 redo」与「栈顶合并仍生效」。
  */
-describe('useUndoRedo 已知缺陷（钉住现状）', () => {
-  it('撤销后同 mergeKey 的 push 会覆盖历史槽位并保留 redo 分支', () => {
+describe('useUndoRedo · 撤销到中途后开新分支', () => {
+  it('即使 mergeKey 相同且未超窗，也必须另起一步并截断 redo 分支', () => {
     const h = useUndoRedo<State>({ x: 0, items: [] }, { mergeWindowMs: 600 });
     h.push({ x: 1, items: [] }, 'move:1');
-    h.push({ x: 2, items: [] }, 'move:1'); // 合并：栈为 [base, 2]
+    h.push({ x: 2, items: [] }, 'move:1'); // 栈顶合并 → [base, 2]
     h.push({ x: 5, items: [] }, 'other'); // [base, 2, 5]
-    h.undo(); // index → 1（状态 2）
+    expect(h.undo()).toEqual({ x: 2, items: [] }); // 回到 index=1（非栈顶）
+
     advance(10);
-    h.push({ x: 7, items: [] }, 'other'); // 同 key 且在窗内 → 覆盖 index=1
-    expect(h.undo()).toEqual({ x: 0, items: [] });
-    // 槽位被改写：重做得的是刚 push 的 7，原本占该槽的 2 已丢失
+    h.push({ x: 7, items: [] }, 'other'); // 同 key + 窗内，但非栈顶 → 不得合并
+
+    // 刚发生新操作：redo 分支已被截断（旧的 5 不再可重做）
+    expect(h.canRedo.value).toBe(false);
+    expect(h.redo()).toBeUndefined();
+    // 历史槽位未被改写：回退仍能看到原来的 2
+    expect(h.undo()).toEqual({ x: 2, items: [] });
     expect(h.redo()).toEqual({ x: 7, items: [] });
-    // 最反常的一点：刚发生一次新操作，redo 分支仍然在（本应被截断）
-    expect(h.canRedo.value).toBe(true);
-    expect(h.redo()).toEqual({ x: 5, items: [] });
-    expect(h.canUndo.value).toBe(true);
+  });
+
+  it('连续回退多步后开新操作，每一步仍按预期堆叠', () => {
+    const h = useUndoRedo<State>({ x: 0, items: [] }, { mergeWindowMs: 600 });
+    h.push({ x: 1, items: [] });
+    h.push({ x: 2, items: [] });
+    h.push({ x: 3, items: [] });
+    h.undo();
+    h.undo();
+    h.undo(); // 三步全退 → 回基线
+    expect(h.canUndo.value).toBe(false);
+
+    h.push({ x: 9, items: [] });
+    expect(h.canRedo.value).toBe(false);
+    expect(h.undo()).toEqual({ x: 0, items: [] });
+    expect(h.redo()).toEqual({ x: 9, items: [] });
   });
 });
