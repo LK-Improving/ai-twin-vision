@@ -7,7 +7,7 @@
     "noEmit": true,
     "jsx": "preserve",
     "paths": {
-      "@dt/shared-types": ["../shared-types/src/index.ts"]
+      "@dt/shared-types": ["../shared-types/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts"],

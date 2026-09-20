@@ -9,6 +9,12 @@ const props = defineProps<{
   node: WidgetNode;
   runtime?: boolean;
   data?: unknown;
+  /**
+   * 由父容器（编辑器命中区）提供位置与尺寸时置 true：组件铺满父级，
+   * 不再按 rect 自定位。避免父容器与自身各定位一次导致 rect 被叠加两遍（错位）。
+   * 预览层保持 false，按设计坐标 rect 绝对定位。
+   */
+  fill?: boolean;
 }>();
 
 /** 查注册表拿到组件定义 */
@@ -24,14 +30,17 @@ const mergedProps = computed<Record<string, unknown>>(() => {
 /** 由 rect 生成绝对定位样式，并叠加 style 覆盖与 visible */
 const style = computed<Record<string, string>>(() => {
   const r = props.node.rect ?? { x: 0, y: 0, width: 100, height: 100 };
-  const s: Record<string, string> = {
-    position: 'absolute',
-    left: `${r.x}px`,
-    top: `${r.y}px`,
-    width: `${r.width}px`,
-    height: `${r.height}px`,
-    zIndex: String(r.zIndex ?? 1),
-  };
+  // fill=true：父级命中区已按 rect 定位，这里铺满父级即可；否则按 rect 自定位。
+  const s: Record<string, string> = props.fill
+    ? { position: 'absolute', inset: '0', zIndex: String(r.zIndex ?? 1) }
+    : {
+        position: 'absolute',
+        left: `${r.x}px`,
+        top: `${r.y}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+        zIndex: String(r.zIndex ?? 1),
+      };
   if (r.rotate) s.transform = `rotate(${r.rotate}deg)`;
   if (props.node.visible === false) s.display = 'none';
   const override = props.node.style ?? {};
