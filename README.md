@@ -88,7 +88,8 @@ pnpm dev:web                  # http://localhost:5173
 | `pnpm lint:spell`                          | cspell 拼写检查（代码与配置；中文文档正文不纳入）           |
 | `pnpm format`                              | Prettier 格式化                                             |
 | `pnpm build`                               | 全量构建                                                    |
-| `pnpm test`                                | 跑全部单测（当前 128 个用例；`code-editor`/`widgets` 尚无） |
+| `pnpm test`                                | 跑全部单测（当前 129 个用例；`code-editor`/`widgets` 尚无） |
+| `pnpm test:e2e`                            | Playwright 端到端冒烟（需先起服务，见下节）                 |
 | `pnpm infra:down`                          | 停止基础设施                                                |
 | `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                            |
 
@@ -100,6 +101,8 @@ pnpm dev:web                  # http://localhost:5173
 | ----------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `quality`   | PR / main | `pnpm install --frozen-lockfile` → `pnpm -r typecheck` → `pnpm lint`（error 即失败）→ `pnpm lint:style` → `pnpm lint:spell` → `pnpm -r test` → `pnpm -r build` → 产物体积棘轮 → 上传 dist 产物 |
 | `api-smoke` | main      | 起 Postgres(TimescaleDB) + Redis 服务，`cp .env.example .env.dev` → 构建后端 → `schema:init` → 启服务并断言 `/health` 与 `/auth/login` 拿到 accessToken                                        |
+| `migration` | PR        | 空库 `db:migrate` → 断言版本记录与表数 → `db:seed` 跑两遍验幂等 → `pnpm db:check-drift`（entity 改了忘加迁移则失败）                                                                           |
+| `e2e`       | PR / main | 起服务与前端（5199 + `--strictPort`）→ `pnpm test:e2e` 跑 `e2e/` 下编辑器冒烟；失败时上传报告与现场截图                                                                                        |
 | `docker`    | main      | 两个 Dockerfile 各自 build；仅当配了 registry 变量与凭据才登录并推送                                                                                                                           |
 
 本地等价校验（CI 红之前先自己跑一遍）：
@@ -115,8 +118,30 @@ node scripts/ci-size-report.mjs --budget scripts/size-budget.json
 - Variable `DOCKER_REGISTRY`；Secret `DOCKER_USERNAME` / `DOCKER_PASSWORD`
 - 体积预算：`scripts/size-budget.json`（含 10% 余量）；确实要涨时跑 `--update` 并在 PR 里说明
 
-已知未覆盖：浏览器端回归（脚本沙箱隔离、CodeMirror 渲染）需真实 Worker 与 GL 上下文，
-属迭代 5 的 Playwright e2e 任务，不在此流水线内（不假称已覆盖）。
+## 端到端测试（Playwright）
+
+单测能证明纯逻辑正确，但看不到“路由守卫、真实登录、Pinia store 与 DOM 事件接线”这类集成问题，
+所以 e2e 只补这一层（`e2e/`，不抢单测的活）。它**不**自动拉起服务（后端要连数据库/Redis），本地跑法：
+
+```bash
+pnpm infra:up:iot            # Postgres / Redis / MinIO / Mosquitto
+pnpm dev:api                 # 后端 :3001（需已 db:migrate + db:seed）
+# 前端固定用 5199 与专用端口，不与开发者自己的 5173/5174 抢
+pnpm --filter @dt/builder exec vite --port 5199 --strictPort
+pnpm test:e2e                # 另开一个终端；E2E_BASE_URL 可覆盖默认 http://localhost:5199
+```
+
+说明：
+
+- 登录夹具走真实表单（`e2e/auth.setup.ts`），凭据默认 `admin / Admin@123`（可用 `E2E_USERNAME`/`E2E_PASSWORD` 覆盖），
+  会话写入 `e2e/.auth/`（已 gitignore，内含 token，不得入库）。
+- `workers: 1` 且禁并发：用例共享同一套种子数据与历史栈，并行会互相踩。
+- **Playwright 版本被钉在 1.47.2**（不是越新越好）：仓库声明支持 `node >= 20.0.0`，而新版 Playwright
+  加载 `.ts` 配置依赖更新 Node 的原生类型剥离，在 20.0.0 上直接报 `Cannot use import statement outside a module`。
+  升级 Playwright 前请先提升本仓的 Node 基线。
+
+已知未覆盖：脚本沙箱的浏览器内回归（Worker 能否在产物里启动、越权标识符被遮蔽、死循环不卡死 UI）
+与“发布→预览”完整链路仍待补（见迭代清单 5.1 后续项），不假称已覆盖。
 
 ## 架构要点
 

@@ -11,6 +11,12 @@ coverage/
 playwright-report/
 test-results/
 
+# e2e 产物：登录会话（含 token）、失败现场截图/视频/trace、HTML 报告
+# 其中 .auth 绝对不能入库，否则 access/refresh token 会进版本库
+e2e/.auth/
+e2e/.artifacts/
+e2e-report/
+
 # env
 # 真实环境文件一律不入库（含第三方服务密钥），仅 .env.example 作为模板跟踪
 .env

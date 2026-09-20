@@ -21,6 +21,8 @@
     "apps/**/*.{ts,vue,cjs}",
     "packages/**/*.{ts,vue}",
     "scripts/**/*.mjs",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
     ".github/**/*.yml",
     "*.{cjs,json}"
   ],
@@ -69,6 +71,7 @@
     "Tripo",
     "typecheck",
     "unsubs",
+    "vite",
     "webst",
     "WMTS",
     "Xshare",

@@ -144,6 +144,95 @@ jobs:
           echo "登录链路 OK（JWT + RBAC 种子账号）"
         working-directory: apps/backend/widget-server
 
+  e2e:
+    name: 端到端冒烟（Playwright）
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: quality
+    services:
+      postgres:
+        image: timescale/timescaledb:2.14.2-pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: digital_twin
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d digital_twin"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      API_PORT: '3001'
+      E2E_BASE_URL: http://127.0.0.1:5199
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      # 浏览器二进制缓存键：同时钉住 playwright 版本与 OS，版本升级自动失效
+      - name: 缓存 Playwright 浏览器
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-v${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 安装浏览器
+        run: npx playwright install --with-deps chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+
+      - name: 由模板生成环境并准备数据库
+        run: |
+          set -euo pipefail
+          cp .env.example .env.dev
+          pnpm --filter @dt/widget-server schema:init
+          pnpm db:seed
+
+      # 同 api-smoke：后端、前端、用例必须在同一个 step 里，否则 runner 会在 step 之间杀掉进程组。
+      # 前端用 5199 + strictPort：端口被占就直接失败，不静默跳端口（否则 baseURL 与实测不在同一处）。
+      - name: 启动前后端并跑端到端用例
+        env:
+          MQTT_INGEST_ENABLED: 'false'
+        run: |
+          set -euo pipefail
+          nohup node apps/backend/widget-server/dist/main.js >/tmp/api.log 2>&1 &
+          API=$!
+          nohup pnpm --filter @dt/builder exec vite --port 5199 --strictPort --host 127.0.0.1 >/tmp/web.log 2>&1 &
+          WEB=$!
+          trap 'kill $API $WEB 2>/dev/null || true; echo "----- api log -----"; tail -n 40 /tmp/api.log; echo "----- web log -----"; tail -n 40 /tmp/web.log' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:3001/api/v1/health >/dev/null && curl -fs http://127.0.0.1:5199/ >/dev/null; then
+              echo "前后端就绪"; break
+            fi
+            if [ "$i" -eq 30 ]; then echo "服务 60s 内未就绪" >&2; exit 1; fi
+            sleep 2
+          done
+
+          pnpm test:e2e
+
+      - name: 上传失败现场
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e-report/
+            e2e/.artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
+
   migration:
     name: 数据库迁移与漂移门禁
     runs-on: ubuntu-latest
