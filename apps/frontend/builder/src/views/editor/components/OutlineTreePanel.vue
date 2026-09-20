@@ -53,7 +53,11 @@ const grouped = computed(() =>
             .sort((a, b) => a.sortOrder - b.sortOrder)
             .map((c: SceneComponentInstance): TreeItem => ({
               id: c.id,
-              name: c.name || store.getComponentItem(c.componentId)?.name || c.componentType || '三维组件',
+              name:
+                c.name ||
+                store.getComponentItem(c.componentId)?.name ||
+                c.componentType ||
+                '三维组件',
               type: c.componentType || '',
               visible: c.visible !== false,
               locked: !!c.locked,
@@ -72,7 +76,9 @@ function isSelected(id: string): boolean {
 function onSelect(id: string, e: MouseEvent, list: TreeItem[]): void {
   if (e.ctrlKey || e.metaKey) {
     const set = new Set(selectedIds.value);
-    set.has(id) ? set.delete(id) : set.add(id);
+    // 多选切换：已选则移除，未选则加入
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
     store.selectNodes([...set]);
   } else if (e.shiftKey) {
     const ids = list.map((i) => i.id);
@@ -262,8 +268,16 @@ function commitRename(id: string, value: string): void {
             <IconBase name="cube" :size="14" class="item-icon" />
             <span class="item-name">{{ item.name }}</span>
             <span class="item-actions">
-              <IconBase :name="item.visible ? 'eye' : 'eye-off'" :size="13" @click.stop="toggleVisible(item.id)" />
-              <IconBase :name="item.locked ? 'lock' : 'unlock'" :size="13" @click.stop="toggleLock(item.id)" />
+              <IconBase
+                :name="item.visible ? 'eye' : 'eye-off'"
+                :size="13"
+                @click.stop="toggleVisible(item.id)"
+              />
+              <IconBase
+                :name="item.locked ? 'lock' : 'unlock'"
+                :size="13"
+                @click.stop="toggleLock(item.id)"
+              />
             </span>
           </div>
           <div v-if="!g.items.length" class="empty-hint">该图层暂无内容</div>
@@ -271,7 +285,12 @@ function commitRename(id: string, value: string): void {
       </section>
     </div>
 
-    <ul v-if="menu" class="ctx-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @click.stop>
+    <ul
+      v-if="menu"
+      class="ctx-menu"
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @click.stop
+    >
       <li @click="onRename">重命名</li>
       <li @click="onDuplicate">复制</li>
       <li @click="moveLayer('up')">上移一层</li>

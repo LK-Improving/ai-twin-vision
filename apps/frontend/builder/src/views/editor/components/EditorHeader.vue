@@ -13,32 +13,50 @@ import BaseButton from '@/components/ui/BaseButton.vue';
 import BaseInput from '@/components/ui/BaseInput.vue';
 import BaseModal from '@/components/ui/BaseModal.vue';
 import BaseDrawer from '@/components/ui/BaseDrawer.vue';
-import IconBase from '@/components/ui/IconBase.vue';
 import PublishDialog from './PublishDialog.vue';
 import VersionHistoryDrawer from './VersionHistoryDrawer.vue';
 
-const props = defineProps<{ leftCollapsed: boolean; rightCollapsed: boolean }>();
-const emit = defineEmits<{ toggleLeft: []; toggleRight: [] }>();
-
 const router = useRouter();
 const store = useEditorStore();
-const { sceneDetail, dirty, saving, canvasScale, canUndo, canRedo, showGrid, showRuler } =
-  storeToRefs(store);
+const {
+  sceneDetail,
+  dirty,
+  saving,
+  canvasScale,
+  canUndo,
+  canRedo,
+  showGrid,
+  showRuler,
+  globeEnabled,
+  theme,
+} = storeToRefs(store);
 
 const showPublish = ref(false);
 const showHistory = ref(false);
 const editingName = ref(false);
 const nameDraft = ref('');
 
-/** 适应屏幕：按画布可用区域计算（模板内不直接访问 window） */
+/**
+ * 适应屏幕：直接量测画布容器（.editor-center）的真实尺寸。
+ * 面板宽度可拖拽伸缩，不能再用写死的 600 估算，否则「适应」会算偏。
+ */
 function fitScreen(): void {
+  const center = document.querySelector('.editor-center') as HTMLElement | null;
+  if (center) {
+    const r = center.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      store.fitScreen(r.width, r.height);
+      return;
+    }
+  }
   store.fitScreen(window.innerWidth - 600, window.innerHeight - 100);
 }
 
 /** 状态徽标文案与配色 */
 const statusInfo = computed(() => {
   const raw = sceneDetail.value?.status;
-  const text = raw != null ? SCENE_STATUS_TEXT[raw as unknown as SceneStatus] ?? 'DRAFT' : 'DRAFT';
+  const text =
+    raw != null ? (SCENE_STATUS_TEXT[raw as unknown as SceneStatus] ?? 'DRAFT') : 'DRAFT';
   const map: Record<string, { label: string; cls: string }> = {
     DRAFT: { label: '草稿', cls: 'badge-draft' },
     PUBLISHED: { label: '已发布', cls: 'badge-published' },
@@ -81,12 +99,6 @@ const collabMembers = [
   <header class="editor-header">
     <div class="header-left">
       <BaseButton type="ghost" size="sm" icon="arrow-left" @click="goBack">返回</BaseButton>
-      <IconBase
-        :name="props.leftCollapsed ? 'panel-left-open' : 'panel-left-close'"
-        :size="16"
-        class="toggle-icon"
-        @click="emit('toggleLeft')"
-      />
       <div class="scene-name">
         <BaseInput
           v-if="editingName"
@@ -121,13 +133,26 @@ const collabMembers = [
         :class="{ 'is-on': showRuler }"
         @click="store.toggleRuler()"
       />
+      <BaseButton
+        type="ghost"
+        size="sm"
+        icon="globe"
+        :class="{ 'is-on': globeEnabled }"
+        :title="globeEnabled ? '隐藏三维地球（切换为空白画布）' : '显示三维地球'"
+        @click="store.setGlobeEnabled(!globeEnabled)"
+      />
+      <BaseButton
+        type="ghost"
+        size="sm"
+        :icon="theme === 'dark' ? 'sun' : 'moon'"
+        :title="theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
+        @click="store.toggleTheme()"
+      />
       <span class="divider" />
       <BaseButton type="ghost" size="sm" icon="minus" @click="store.zoomOut()" />
       <span class="zoom-text">{{ Math.round(canvasScale * 100) }}%</span>
       <BaseButton type="ghost" size="sm" icon="plus" @click="store.zoomIn()" />
-      <BaseButton type="ghost" size="sm" icon="fit" @click="fitScreen">
-        适应
-      </BaseButton>
+      <BaseButton type="ghost" size="sm" icon="fit" @click="fitScreen">适应</BaseButton>
     </div>
 
     <div class="header-right">
@@ -138,9 +163,13 @@ const collabMembers = [
           class="avatar"
           :style="{ background: m.color }"
           :title="m.name"
-        >{{ m.name[0] }}</span>
+        >
+          {{ m.name[0] }}
+        </span>
       </div>
-      <BaseButton type="ghost" size="sm" icon="history" @click="showHistory = true">版本</BaseButton>
+      <BaseButton type="ghost" size="sm" icon="history" @click="showHistory = true">
+        版本
+      </BaseButton>
       <BaseButton type="default" size="sm" icon="eye" @click="onPreview">预览</BaseButton>
       <BaseButton
         type="primary"
@@ -152,13 +181,9 @@ const collabMembers = [
       >
         保存
       </BaseButton>
-      <BaseButton type="primary" size="sm" icon="rocket" @click="showPublish = true">发布</BaseButton>
-      <IconBase
-        :name="props.rightCollapsed ? 'panel-right-open' : 'panel-right-close'"
-        :size="16"
-        class="toggle-icon"
-        @click="emit('toggleRight')"
-      />
+      <BaseButton type="primary" size="sm" icon="rocket" @click="showPublish = true">
+        发布
+      </BaseButton>
     </div>
 
     <PublishDialog v-model:visible="showPublish" />
@@ -232,13 +257,6 @@ const collabMembers = [
   text-align: center;
   font-size: 13px;
 }
-.toggle-icon {
-  cursor: pointer;
-  color: #868e96;
-}
-.toggle-icon:hover {
-  color: #1f2d3d;
-}
 .is-on {
   color: #00b8d9 !important;
 }
@@ -263,8 +281,14 @@ const collabMembers = [
   animation: pulse 1.4s infinite;
 }
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(0, 184, 217, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(0, 184, 217, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 184, 217, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 184, 217, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(0, 184, 217, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 184, 217, 0);
+  }
 }
 </style>

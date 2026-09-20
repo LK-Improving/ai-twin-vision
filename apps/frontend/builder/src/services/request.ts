@@ -10,7 +10,9 @@ import {
   clearAuth,
   getAccessToken,
   getDeviceId,
+  getExpiresIn,
   getRefreshToken,
+  getTokenIssuedAt,
   setTokens,
 } from '@/utils/storage';
 import { useToast } from '@/composables/useToast';
@@ -65,6 +67,35 @@ function doRefresh(): Promise<boolean> {
     });
     return true;
   });
+}
+
+/**
+ * 确保拿到一枚"仍然有效"的 Access Token。
+ *
+ * 供 HTTP 之外的通道复用（如 WebSocket 握手）：令牌未临近过期时直接返回缓存值，
+ * 不发起网络请求；临近过期才走一次续期，并复用 refreshing 单例避免并发重复刷新。
+ *
+ * @param leewaySec 提前多少秒判定为"即将过期"，默认 60s
+ * @returns 有效令牌；未登录或续期失败时返回空串
+ */
+export function ensureFreshToken(leewaySec = 60): Promise<string> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return Promise.resolve(getAccessToken());
+
+  const expiresIn = getExpiresIn();
+  const issuedAt = getTokenIssuedAt();
+  const remainMs = issuedAt > 0 ? issuedAt + expiresIn * 1000 - Date.now() : 0;
+  // 尚有余量（或无法判断签发时间时保守认为有效）→ 直接复用，不打扰服务端
+  if (remainMs > leewaySec * 1000) return Promise.resolve(getAccessToken());
+
+  if (!refreshing) {
+    // 复用 refreshing 单例，与 HTTP 401 续期互斥；无论成败都复位，
+    // 并保持 rejection 语义一致（失败不在此处跳转到登录页，交由调用方决定）
+    refreshing = doRefresh().finally(() => {
+      refreshing = null;
+    });
+  }
+  return refreshing.then(() => getAccessToken()).catch(() => '');
 }
 
 function redirectLogin(): void {

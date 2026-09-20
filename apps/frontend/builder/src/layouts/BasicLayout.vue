@@ -44,6 +44,7 @@ const groups: MenuGroup[] = [
     items: [
       { label: '数据源', icon: 'database', to: '/data-sources', permission: 'datasource:view' },
       { label: '设备', icon: 'device', to: '/devices', permission: 'device:view' },
+      { label: '告警规则', icon: 'warning', to: '/alert-rules', permission: 'device:manage' },
     ],
   },
   {
@@ -68,7 +69,9 @@ const visibleGroups = computed(() =>
 /* ---------------- 用户下拉 ---------------- */
 const userMenuOpen = ref(false);
 const profile = computed(() => auth.profile);
-const avatarText = computed(() => profile.value?.realName?.[0] ?? profile.value?.username?.[0] ?? 'U');
+const avatarText = computed(
+  () => profile.value?.realName?.[0] ?? profile.value?.username?.[0] ?? 'U',
+);
 
 function toggleUserMenu(): void {
   userMenuOpen.value = !userMenuOpen.value;
@@ -151,7 +154,9 @@ onBeforeUnmount(() => {
       :class="app.sidebarCollapsed ? 'w-16' : 'w-60'"
     >
       <div class="flex h-14 items-center gap-2 border-b border-[#eef2f7] px-4">
-        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white">
+        <div
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white"
+        >
           <IconBase name="globe" :size="18" />
         </div>
         <span v-if="!app.sidebarCollapsed" class="truncate text-sm font-semibold text-gradient">
@@ -161,10 +166,7 @@ onBeforeUnmount(() => {
 
       <nav class="flex-1 overflow-y-auto px-2 py-3">
         <template v-for="g in visibleGroups" :key="g.group">
-          <p
-            v-if="!app.sidebarCollapsed"
-            class="px-3 pb-1 pt-3 text-xs font-medium text-ink-muted"
-          >
+          <p v-if="!app.sidebarCollapsed" class="px-3 pb-1 pt-3 text-xs font-medium text-ink-muted">
             {{ g.group }}
           </p>
           <router-link
@@ -189,7 +191,9 @@ onBeforeUnmount(() => {
     <!-- 主区 -->
     <div class="flex min-w-0 flex-1 flex-col">
       <!-- 顶栏 -->
-      <header class="flex h-14 shrink-0 items-center justify-between border-b border-[#eef2f7] bg-white px-4">
+      <header
+        class="flex h-14 shrink-0 items-center justify-between border-b border-[#eef2f7] bg-white px-4"
+      >
         <div class="flex items-center gap-3">
           <button
             type="button"
@@ -201,18 +205,28 @@ onBeforeUnmount(() => {
           <nav class="flex items-center gap-1.5 text-sm text-ink-soft">
             <template v-for="(c, i) in app.breadcrumbs" :key="i">
               <span v-if="i > 0" class="text-ink-muted">/</span>
-              <span :class="i === app.breadcrumbs.length - 1 ? 'text-ink font-medium' : ''">{{
-                c.title
-              }}</span>
+              <span :class="i === app.breadcrumbs.length - 1 ? 'text-ink font-medium' : ''">
+                {{ c.title }}
+              </span>
             </template>
           </nav>
         </div>
 
         <div class="flex items-center gap-2">
           <!-- 健康状态 -->
-          <div class="flex items-center gap-1.5 rounded-lg bg-surface-soft px-2.5 py-1.5 text-xs text-ink-soft">
+          <div
+            class="flex items-center gap-1.5 rounded-lg bg-surface-soft px-2.5 py-1.5 text-xs text-ink-soft"
+          >
             <span class="h-2 w-2 rounded-full" :class="healthDot" />
-            <span>{{ health?.status === 'ok' ? '服务正常' : health?.status === 'degraded' ? '服务降级' : '服务异常' }}</span>
+            <span>
+              {{
+                health?.status === 'ok'
+                  ? '服务正常'
+                  : health?.status === 'degraded'
+                    ? '服务降级'
+                    : '服务异常'
+              }}
+            </span>
           </div>
           <!-- 全屏 -->
           <button
@@ -230,10 +244,14 @@ onBeforeUnmount(() => {
               class="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-muted"
               @click="toggleUserMenu"
             >
-              <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-sm font-medium text-white">
+              <span
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-sm font-medium text-white"
+              >
                 {{ avatarText }}
               </span>
-              <span class="hidden text-sm text-ink-soft sm:inline">{{ profile?.realName || profile?.username }}</span>
+              <span class="hidden text-sm text-ink-soft sm:inline">
+                {{ profile?.realName || profile?.username }}
+              </span>
               <IconBase name="chevron-down" :size="14" class="text-ink-muted" />
             </button>
             <Transition name="dropdown">
@@ -246,14 +264,16 @@ onBeforeUnmount(() => {
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-soft hover:bg-surface-muted"
                   @click="goProfile"
                 >
-                  <IconBase name="user" :size="15" /> 个人中心
+                  <IconBase name="user" :size="15" />
+                  个人中心
                 </button>
                 <button
                   type="button"
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-soft hover:bg-surface-muted"
-                  @click="(userMenuOpen = false), (pwdVisible = true)"
+                  @click="((userMenuOpen = false), (pwdVisible = true))"
                 >
-                  <IconBase name="lock" :size="15" /> 修改密码
+                  <IconBase name="lock" :size="15" />
+                  修改密码
                 </button>
                 <div class="my-1 border-t border-[#eef2f7]" />
                 <button
@@ -261,7 +281,8 @@ onBeforeUnmount(() => {
                   class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft"
                   @click="doLogout"
                 >
-                  <IconBase name="logout" :size="15" /> 退出登录
+                  <IconBase name="logout" :size="15" />
+                  退出登录
                 </button>
               </div>
             </Transition>
@@ -280,7 +301,13 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 修改密码弹窗 -->
-    <BaseModal v-model:visible="pwdVisible" title="修改密码" :loading="pwdLoading" confirm-text="确定修改" @confirm="submitPwd">
+    <BaseModal
+      v-model:visible="pwdVisible"
+      title="修改密码"
+      :loading="pwdLoading"
+      confirm-text="确定修改"
+      @confirm="submitPwd"
+    >
       <div class="space-y-3">
         <div>
           <label class="mb-1 block text-sm text-ink-soft">原密码</label>
@@ -303,7 +330,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .dropdown-enter-active,
 .dropdown-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 .dropdown-enter-from,
 .dropdown-leave-to {

@@ -36,7 +36,12 @@ import { http } from '@/services/request';
 import * as sceneApi from '@/services/api/scene';
 import { useToast } from '@/composables/useToast';
 import type { SceneDetail, UpdateSceneRequest } from '@dt/shared-types';
-import type { ComponentListItem, DataSourceItem, PageResult } from '@dt/shared-types';
+import type {
+  ComponentListItem,
+  ComponentDetail,
+  DataSourceItem,
+  PageResult,
+} from '@dt/shared-types';
 
 /** 模型资产项（后端 /model-assets 返回，结构以实际接口为准，这里仅声明用到的字段） */
 export interface ModelAssetItem {
@@ -52,14 +57,7 @@ export type RightTab = 'prop' | 'data' | 'event' | 'style';
 
 /** 对齐/分布操作类型 */
 export type AlignType =
-  | 'left'
-  | 'right'
-  | 'top'
-  | 'bottom'
-  | 'centerH'
-  | 'centerV'
-  | 'distributeH'
-  | 'distributeV';
+  'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV' | 'distributeH' | 'distributeV';
 
 /** 选中态统一包装 */
 export type SelectedWrapper =
@@ -88,6 +86,8 @@ export const useEditorStore = defineStore('editor', () => {
   const loading = ref(false);
   const saving = ref(false);
   const publishing = ref(false);
+  /** 最近一次发布得到的访问令牌（用于生成 /screen/:token 分享链接） */
+  const publishToken = ref<string | null>(null);
   const dirty = ref(false);
   /** 自动保存开关（脏数据每 60s 自动 PUT 一次） */
   const autoSaveEnabled = ref(true);
@@ -103,6 +103,11 @@ export const useEditorStore = defineStore('editor', () => {
 
   /** 组件库目录（GET /components 拉取，用于三维组件拖拽与类型解析） */
   const componentCatalog = ref<ComponentListItem[]>([]);
+  /**
+   * 组件详情缓存（含 configSchema）。
+   * 列表接口 /components 不返回 configSchema，选中 3D 组件时按需拉取详情用于渲染属性表单。
+   */
+  const componentDetails = ref<Record<string, ComponentDetail>>({});
   /** 数据源列表（GET /data-sources） */
   const dataSources = ref<DataSourceItem[]>([]);
   /** 模型资产（GET /model-assets） */
@@ -151,6 +156,32 @@ export const useEditorStore = defineStore('editor', () => {
     return out;
   });
 
+  /**
+   * 2D 节点 → 画布「绝对」矩形（逐级累加父容器偏移）。
+   *
+   * 为什么不直接用 node.rect：**子节点的 rect 是相对父容器的**
+   * （实测：PANEL `ai-pie` 在 (20,620)，其子节点 `node-1` 的 rect 是 (10,34)，
+   *   即面板内部坐标，由 WidgetRenderer 嵌在父级里渲染）。
+   * 选中框/缩放手柄若直接拿 rect 当画布坐标画，就会跑到画布左上角 →
+   * 表现即「选择框与组件实际显示位置不一致」。这里统一换算成绝对坐标作为唯一口径。
+   */
+  const absoluteRects = computed<Record<string, WidgetRect>>(() => {
+    const out: Record<string, WidgetRect> = {};
+    const walk = (list: WidgetNode[], ox: number, oy: number): void => {
+      for (const n of list) {
+        out[n.id] = { ...n.rect, x: n.rect.x + ox, y: n.rect.y + oy };
+        if (n.children?.length) walk(n.children, n.rect.x + ox, n.rect.y + oy);
+      }
+    };
+    walk(page.value.nodes, 0, 0);
+    return out;
+  });
+
+  /** 取某节点的画布绝对矩形（不存在时回退到原 rect） */
+  function getAbsoluteRect(id: string): WidgetRect | null {
+    return absoluteRects.value[id] ?? null;
+  }
+
   // -------------------------------------------------------------- 视图态
   const canvasScale = ref(1);
   const canvasOffset = ref<CanvasOffset>({ x: 0, y: 0 });
@@ -158,6 +189,29 @@ export const useEditorStore = defineStore('editor', () => {
   const showRuler = ref(true);
   const previewMode = ref(false);
   const activeRightTab = ref<RightTab>('prop');
+
+  /** 编辑器主题（light / dark），持久化到 localStorage */
+  const theme = ref<'light' | 'dark'>(
+    (typeof localStorage !== 'undefined' &&
+      (localStorage.getItem('dt-editor-theme') as 'light' | 'dark')) ||
+      'light',
+  );
+  function toggleTheme(): void {
+    theme.value = theme.value === 'light' ? 'dark' : 'light';
+    try {
+      localStorage.setItem('dt-editor-theme', theme.value);
+    } catch {
+      /* 隐私模式下写入失败可忽略 */
+    }
+  }
+  function setTheme(t: 'light' | 'dark'): void {
+    theme.value = t;
+    try {
+      localStorage.setItem('dt-editor-theme', t);
+    } catch {
+      /* 隐私模式下写入失败可忽略 */
+    }
+  }
 
   /** 图层（取自 engineConfig.layers，保持单一数据源） */
   const layers = computed<SceneLayer[]>(() => engineConfig.value.layers);
@@ -301,6 +355,8 @@ export const useEditorStore = defineStore('editor', () => {
       // 发布前先确保最新数据已落库
       if (dirty.value) await save();
       const res = await sceneApi.publishSceneApi(sceneId.value, { changeLog });
+      // 令牌首次发布时生成、之后不变，用于 /screen/:token 公开访问
+      publishToken.value = res.publishToken ?? null;
       toast.success(`发布成功：${res.version}`);
       return true;
     } catch (err) {
@@ -314,7 +370,9 @@ export const useEditorStore = defineStore('editor', () => {
   // -------------------------------------------------------------- 目录/资源
   async function loadComponentCatalog(): Promise<void> {
     try {
-      const res = await http.get<PageResult<ComponentListItem>>('/components', { params: { limit: 200 } });
+      const res = await http.get<PageResult<ComponentListItem>>('/components', {
+        params: { limit: 200 },
+      });
       componentCatalog.value = res.dataList ?? [];
     } catch {
       componentCatalog.value = [];
@@ -323,7 +381,9 @@ export const useEditorStore = defineStore('editor', () => {
 
   async function loadDataSources(): Promise<void> {
     try {
-      const res = await http.get<PageResult<DataSourceItem>>('/data-sources', { params: { limit: 200 } });
+      const res = await http.get<PageResult<DataSourceItem>>('/data-sources', {
+        params: { limit: 200 },
+      });
       dataSources.value = res.dataList ?? [];
     } catch {
       dataSources.value = [];
@@ -333,7 +393,9 @@ export const useEditorStore = defineStore('editor', () => {
   async function loadModelAssets(): Promise<void> {
     try {
       const res = await http.get<ModelAssetItem[]>('/model-assets');
-      modelAssets.value = Array.isArray(res) ? res : ((res as PageResult<ModelAssetItem>)?.dataList ?? []);
+      modelAssets.value = Array.isArray(res)
+        ? res
+        : ((res as PageResult<ModelAssetItem>)?.dataList ?? []);
     } catch {
       modelAssets.value = [];
     }
@@ -341,6 +403,23 @@ export const useEditorStore = defineStore('editor', () => {
 
   function getComponentItem(componentId: string): ComponentListItem | undefined {
     return componentCatalog.value.find((c) => c.id === componentId);
+  }
+
+  /**
+   * 按需拉取组件详情（含 configSchema）并缓存。
+   * 列表接口不返回 schema，选中 3D 组件时调用，供属性面板渲染动态表单。
+   */
+  async function ensureComponentDetail(componentId: string): Promise<ComponentDetail | null> {
+    if (!componentId) return null;
+    const cached = componentDetails.value[componentId];
+    if (cached) return cached;
+    try {
+      const detail = await http.get<ComponentDetail>(`/components/${componentId}`);
+      if (detail) componentDetails.value[componentId] = detail;
+      return detail;
+    } catch {
+      return null;
+    }
   }
 
   // -------------------------------------------------------------- 2D 节点
@@ -384,7 +463,11 @@ export const useEditorStore = defineStore('editor', () => {
         ({
           cartographic: { longitude: view.longitude, latitude: view.latitude, height: 0 },
         } as Transform),
-      layerId: engineConfig.value.cesium.enabled ? 'layer-gis' : 'layer-model',
+      // 按渲染引擎归属图层：Three 类（精细模型/粒子）→「精细模型」，Cesium 类（POI/3D Tiles/路径）→「GIS 图层」。
+      // 此前按「是否启用 Cesium」判断，会把 MODEL_3D 也塞进 GIS 图层，图层树归类不准。
+      layerId: [ComponentType.MODEL_3D, ComponentType.PARTICLE].includes(type as ComponentType)
+        ? 'layer-model'
+        : 'layer-gis',
       sortOrder: components.value.length,
       visible: true,
       locked: false,
@@ -605,7 +688,11 @@ export const useEditorStore = defineStore('editor', () => {
     return act.id;
   }
 
-  function updateEventAction(bindingId: string, actionId: string, patch: Partial<EventAction>): void {
+  function updateEventAction(
+    bindingId: string,
+    actionId: string,
+    patch: Partial<EventAction>,
+  ): void {
     const b = page.value.events.find((e) => e.id === bindingId);
     const act = b?.actions.find((a) => a.id === actionId);
     if (act) Object.assign(act, patch);
@@ -661,17 +748,43 @@ export const useEditorStore = defineStore('editor', () => {
     canvasOffset.value = { x, y };
   }
 
-  /** 适应屏幕：根据容器尺寸计算缩放并居中 */
+  /**
+   * 「适应」视图：把固定的 1920×1080 画布（尺寸取自 engineConfig.canvas）按视口缩放并居中，
+   * 四周留 80px 边距；不放大超过 100%，避免画布被无谓拉伸。
+   */
   function fitScreen(containerWidth: number, containerHeight: number): void {
-    const cw = engineConfig.value.canvas?.width ?? 1920;
-    const ch = engineConfig.value.canvas?.height ?? 1080;
     if (!containerWidth || !containerHeight) return;
-    const scale = Math.min(containerWidth / cw, containerHeight / ch) * 0.9;
+    const w = engineConfig.value.canvas?.width ?? 1920;
+    const h = engineConfig.value.canvas?.height ?? 1080;
+    const MARGIN = 80;
+    const scale = Math.min((containerWidth - MARGIN * 2) / w, (containerHeight - MARGIN * 2) / h);
     canvasScale.value = Math.min(4, Math.max(0.1, scale));
     canvasOffset.value = {
-      x: (containerWidth - cw * canvasScale.value) / 2,
-      y: (containerHeight - ch * canvasScale.value) / 2,
+      x: (containerWidth - w * canvasScale.value) / 2,
+      y: (containerHeight - h * canvasScale.value) / 2,
     };
+  }
+
+  // -------------------------------------------------------------- 地球 / 空白画布
+  /** 是否显示三维地球（底图/星空/大气）。关闭即「空白画布」。 */
+  const globeEnabled = computed<boolean>(
+    () => engineConfig.value.cesium.scene?.globeShow !== false,
+  );
+
+  /**
+   * 切换三维地球。关闭时连星空盒/太阳/月亮一起关，
+   * 否则画布上仍会残留星空，做不到真正的空白。
+   * 影像图层配置**不动**，所以再打开时地球会带着原底图回来。
+   */
+  function setGlobeEnabled(enabled: boolean): void {
+    const scene = engineConfig.value.cesium.scene ?? {};
+    scene.globeShow = enabled;
+    scene.skyAtmosphere = enabled;
+    scene.skyBox = enabled;
+    scene.sun = enabled;
+    scene.moon = enabled;
+    engineConfig.value.cesium.scene = scene;
+    commit(`globe:${enabled}`);
   }
 
   /** 取当前相机视角写入引擎配置（属性面板「取当前视角」按钮调用） */
@@ -744,6 +857,7 @@ export const useEditorStore = defineStore('editor', () => {
     loading,
     saving,
     publishing,
+    publishToken,
     dirty,
     autoSaveEnabled,
     engineConfig,
@@ -751,6 +865,7 @@ export const useEditorStore = defineStore('editor', () => {
     page,
     layers,
     componentCatalog,
+    componentDetails,
     dataSources,
     modelAssets,
     perfStats,
@@ -759,6 +874,8 @@ export const useEditorStore = defineStore('editor', () => {
     selectedIds,
     selectedNode,
     selectedWrappers,
+    absoluteRects,
+    getAbsoluteRect,
     // 视图
     canvasScale,
     canvasOffset,
@@ -766,6 +883,11 @@ export const useEditorStore = defineStore('editor', () => {
     showRuler,
     previewMode,
     activeRightTab,
+    theme,
+    toggleTheme,
+    setTheme,
+    globeEnabled,
+    setGlobeEnabled,
     // 历史
     canUndo: history.canUndo,
     canRedo: history.canRedo,
@@ -777,6 +899,7 @@ export const useEditorStore = defineStore('editor', () => {
     loadDataSources,
     loadModelAssets,
     getComponentItem,
+    ensureComponentDetail,
     addWidget,
     add3DComponent,
     updateNode,

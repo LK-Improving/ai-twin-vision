@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
+  BLANK_CANVAS_OVERRIDE,
   type CreateSceneRequest,
   type SceneListItem,
   type SceneType,
@@ -18,14 +19,12 @@ import EmptyState from '@/components/ui/EmptyState.vue';
 import SpinnerBox from '@/components/ui/SpinnerBox.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import IconBase from '@/components/ui/IconBase.vue';
+import AiSceneDialog from './AiSceneDialog.vue';
 import { useSceneStore } from '@/stores/scene';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useDebounce } from '@/composables/useDebounce';
-import {
-  getSceneVersionsApi,
-  rollbackSceneApi,
-} from '@/services/api/scene';
+import { getSceneVersionsApi, rollbackSceneApi } from '@/services/api/scene';
 import { formatDateTime } from '@/utils/format';
 
 const router = useRouter();
@@ -66,7 +65,10 @@ const sceneTypeOptions = [
 ];
 
 /** 状态 → 徽标语义 */
-function statusMeta(status?: string): { type: 'success' | 'warning' | 'info' | 'default'; text: string } {
+function statusMeta(status?: string): {
+  type: 'success' | 'warning' | 'info' | 'default';
+  text: string;
+} {
   switch (status) {
     case 'PUBLISHED':
       return { type: 'success', text: '已发布' };
@@ -87,6 +89,12 @@ function sceneTypeText(type: string): string {
 
 const createVisible = ref(false);
 const createLoading = ref(false);
+/** 画布模式：blank = 空白无限画布（默认，适合自己摆组件做大屏）；globe = 三维地球场景 */
+const canvasMode = ref<'blank' | 'globe'>('blank');
+const canvasModeOptions = [
+  { label: '空白画布（无地球，推荐）', value: 'blank' },
+  { label: '三维地球场景', value: 'globe' },
+];
 const createForm = reactive<CreateSceneRequest>({
   name: '',
   description: '',
@@ -97,6 +105,7 @@ function openCreate(): void {
   createForm.name = '';
   createForm.description = '';
   createForm.sceneType = 'HYBRID' as SceneType;
+  canvasMode.value = 'blank';
   createVisible.value = true;
 }
 
@@ -111,6 +120,8 @@ async function submitCreate(): Promise<void> {
       name: createForm.name.trim(),
       description: createForm.description?.trim() || undefined,
       sceneType: createForm.sceneType,
+      // 空白画布：只提交「关掉地球/星空/大气」的局部配置，后端会与默认配置 deepMerge
+      config: canvasMode.value === 'blank' ? BLANK_CANVAS_OVERRIDE : undefined,
     });
     toast.success('场景创建成功');
     createVisible.value = false;
@@ -231,6 +242,19 @@ function openPreview(item: SceneListItem): void {
 onMounted(() => {
   void store.fetchList();
 });
+
+/* ------------------------------ AI 对话生成 ------------------------------ */
+
+const aiVisible = ref(false);
+
+function openAi(): void {
+  aiVisible.value = true;
+}
+
+function onAiGenerated(): void {
+  // 生成成功后刷新列表，让新场景出现在网格中
+  void store.fetchList();
+}
 </script>
 
 <template>
@@ -242,6 +266,7 @@ onMounted(() => {
         <p class="page-desc">创建、编排并发布数字孪生可视化场景</p>
       </div>
       <BaseButton type="primary" icon="plus" @click="openCreate">新建场景</BaseButton>
+      <BaseButton type="primary" icon="cube" @click="openAi">AI 生成</BaseButton>
     </header>
 
     <div class="toolbar">
@@ -257,7 +282,12 @@ onMounted(() => {
         <BaseSelect
           :model-value="store.status"
           :options="statusOptions"
-          @update:model-value="(v) => { store.setStatus(String(v ?? '')); void store.fetchList(); }"
+          @update:model-value="
+            (v) => {
+              store.setStatus(String(v ?? ''));
+              void store.fetchList();
+            }
+          "
         />
       </div>
       <div class="w-44">
@@ -282,7 +312,10 @@ onMounted(() => {
     </div>
 
     <div v-else-if="showEmpty" class="state-box">
-      <EmptyState text="还没有场景" description="点击右上角「新建场景」开始搭建第一个数字孪生大屏" />
+      <EmptyState
+        text="还没有场景"
+        description="点击右上角「新建场景」开始搭建第一个数字孪生大屏"
+      />
     </div>
 
     <template v-else>
@@ -308,7 +341,9 @@ onMounted(() => {
             </div>
 
             <div class="scene-actions">
-              <BaseButton size="sm" type="primary" icon="edit" @click="openEditor(item)">编辑</BaseButton>
+              <BaseButton size="sm" type="primary" icon="edit" @click="openEditor(item)">
+                编辑
+              </BaseButton>
               <BaseButton size="sm" icon="eye" @click="openPreview(item)">预览</BaseButton>
               <BaseButton size="sm" icon="copy" @click="openClone(item)">克隆</BaseButton>
               <BaseButton size="sm" icon="publish" @click="onPublish(item)">发布</BaseButton>
@@ -329,8 +364,18 @@ onMounted(() => {
           :page="store.page"
           :limit="store.limit"
           :total="store.total"
-          @update:page="(v) => { store.setPage(v); void store.fetchList(); }"
-          @update:limit="(v) => { store.setLimit(v); void store.fetchList(); }"
+          @update:page="
+            (v) => {
+              store.setPage(v);
+              void store.fetchList();
+            }
+          "
+          @update:limit="
+            (v) => {
+              store.setLimit(v);
+              void store.fetchList();
+            }
+          "
         />
       </div>
     </template>
@@ -347,15 +392,30 @@ onMounted(() => {
       <div class="form-stack">
         <label class="form-item">
           <span class="form-label required">场景名称</span>
-          <BaseInput v-model="createForm.name" placeholder="例如：智慧园区综合管控" :maxlength="50" />
+          <BaseInput
+            v-model="createForm.name"
+            placeholder="例如：智慧园区综合管控"
+            :maxlength="50"
+          />
         </label>
         <label class="form-item">
           <span class="form-label">场景描述</span>
-          <BaseTextarea v-model="(createForm.description as string)" :rows="3" placeholder="简要描述该场景的业务用途" />
+          <BaseTextarea
+            v-model="createForm.description as string"
+            :rows="3"
+            placeholder="简要描述该场景的业务用途"
+          />
         </label>
         <div class="form-item">
           <span class="form-label">场景类型</span>
-          <BaseSelect v-model="(createForm.sceneType as string)" :options="sceneTypeOptions" />
+          <BaseSelect v-model="createForm.sceneType as string" :options="sceneTypeOptions" />
+        </div>
+        <div class="form-item">
+          <span class="form-label">画布模式</span>
+          <BaseSelect v-model="canvasMode" :options="canvasModeOptions" />
+          <p class="form-hint">
+            空白画布：没有三维地球，画布无限大，直接拖自己的组件搭大屏（之后也能在编辑器顶部一键切回地球）。
+          </p>
         </div>
       </div>
     </BaseModal>
@@ -387,7 +447,11 @@ onMounted(() => {
       <div v-if="versionLoading" class="py-10">
         <SpinnerBox text="加载版本" />
       </div>
-      <EmptyState v-else-if="versions.length === 0" text="暂无发布版本" description="发布场景后即会生成版本记录" />
+      <EmptyState
+        v-else-if="versions.length === 0"
+        text="暂无发布版本"
+        description="发布场景后即会生成版本记录"
+      />
       <ul v-else class="version-list">
         <li v-for="v in versions" :key="v.id" class="version-item">
           <div class="version-head">
@@ -397,11 +461,20 @@ onMounted(() => {
           <p class="version-log">{{ v.changeLog || '无变更说明' }}</p>
           <div class="version-foot">
             <span>{{ v.publishedByName || '系统' }}</span>
-            <BaseButton size="sm" type="text" @click="void onRollback(v.versionNo)">回滚到此版本</BaseButton>
+            <BaseButton size="sm" type="text" @click="void onRollback(v.versionNo)">
+              回滚到此版本
+            </BaseButton>
           </div>
         </li>
       </ul>
     </BaseDrawer>
+
+    <!-- AI 对话生成 -->
+    <AiSceneDialog
+      :visible="aiVisible"
+      @update:visible="aiVisible = $event"
+      @generated="onAiGenerated"
+    />
   </div>
 </template>
 
@@ -452,7 +525,9 @@ onMounted(() => {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
 }
 .scene-card:hover {
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
@@ -470,7 +545,8 @@ onMounted(() => {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 24px 24px;
 }
@@ -535,7 +611,9 @@ onMounted(() => {
   height: 28px;
   border-radius: 6px;
   color: #6b7280;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .icon-btn:hover {
   background: #f2f5fa;
@@ -562,6 +640,12 @@ onMounted(() => {
 .form-label.required::after {
   content: ' *';
   color: #dc2626;
+}
+.form-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9098a6;
 }
 .version-list {
   list-style: none;

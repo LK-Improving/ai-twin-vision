@@ -4,7 +4,8 @@ import IconBase from './IconBase.vue';
 
 const props = withDefaults(
   defineProps<{
-    modelValue: string | number;
+    /** 允许空值：配置项常为可选字段，绑定 undefined 时按空串渲染而非 "undefined" */
+    modelValue: string | number | null | undefined;
     placeholder?: string;
     type?: string;
     size?: 'sm' | 'md';
@@ -20,8 +21,11 @@ const emit = defineEmits<{
   (e: 'enter', value: string): void;
 }>();
 
+/** 空值统一回落为空串，避免输入框里出现 "undefined" / "null" */
+const displayValue = computed(() => props.modelValue ?? '');
+
 const showClear = computed(
-  () => props.clearable && !props.disabled && String(props.modelValue).length > 0,
+  () => props.clearable && !props.disabled && String(displayValue.value).length > 0,
 );
 
 function onInput(e: Event): void {
@@ -30,7 +34,7 @@ function onInput(e: Event): void {
 }
 
 function onEnter(e: KeyboardEvent): void {
-  emit('enter', String(props.modelValue));
+  emit('enter', String(displayValue.value));
 }
 
 function clear(): void {
@@ -41,7 +45,7 @@ function clear(): void {
 <template>
   <div class="relative inline-flex w-full items-center">
     <input
-      :value="modelValue"
+      :value="displayValue"
       :type="type"
       :placeholder="placeholder"
       :disabled="disabled"

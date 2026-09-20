@@ -18,13 +18,15 @@ const props = defineProps<{
 const SIZE = 18;
 const STEP = 100; // 设计坐标步长
 
-/** 生成水平刻度 */
+/** 生成水平刻度（按视口宽度循环，支持任意平移/负坐标） */
 const vTicks = computed(() => {
   const out: Array<{ x: number; label: string }> = [];
-  const step = STEP * props.scale;
-  if (step < 8) return out;
+  const stepPx = STEP * props.scale;
+  if (stepPx < 8) return out;
   const startDesign = Math.floor(-props.offsetX / props.scale / STEP) * STEP;
-  for (let d = startDesign; d <= props.canvasWidth; d += STEP) {
+  // 无限画布：结束刻度由视口宽度推导，不能再用 canvasWidth 当边界
+  const endDesign = startDesign + props.width / props.scale + STEP;
+  for (let d = startDesign; d <= endDesign; d += STEP) {
     const x = props.offsetX + d * props.scale;
     if (x < SIZE || x > props.width) continue;
     out.push({ x, label: String(d) });
@@ -34,10 +36,11 @@ const vTicks = computed(() => {
 
 const hTicks = computed(() => {
   const out: Array<{ y: number; label: string }> = [];
-  const step = STEP * props.scale;
-  if (step < 8) return out;
+  const stepPx = STEP * props.scale;
+  if (stepPx < 8) return out;
   const startDesign = Math.floor(-props.offsetY / props.scale / STEP) * STEP;
-  for (let d = startDesign; d <= props.canvasHeight; d += STEP) {
+  const endDesign = startDesign + props.height / props.scale + STEP;
+  for (let d = startDesign; d <= endDesign; d += STEP) {
     const y = props.offsetY + d * props.scale;
     if (y < SIZE || y > props.height) continue;
     out.push({ y, label: String(d) });
@@ -49,14 +52,30 @@ const hTicks = computed(() => {
 <template>
   <div class="canvas-ruler" :style="{ pointerEvents: 'none' }">
     <!-- 水平标尺 -->
-    <div class="ruler ruler-h" :style="{ left: SIZE + 'px', width: width - SIZE + 'px', height: SIZE + 'px' }">
-      <div v-for="t in vTicks" :key="'v' + t.x" class="tick" :style="{ left: t.x - offsetX - SIZE + 'px' }">
+    <div
+      class="ruler ruler-h"
+      :style="{ left: SIZE + 'px', width: width - SIZE + 'px', height: SIZE + 'px' }"
+    >
+      <div
+        v-for="t in vTicks"
+        :key="'v' + t.x"
+        class="tick"
+        :style="{ left: t.x - offsetX - SIZE + 'px' }"
+      >
         <span class="tick-label">{{ t.label }}</span>
       </div>
     </div>
     <!-- 垂直标尺 -->
-    <div class="ruler ruler-v" :style="{ top: SIZE + 'px', height: height - SIZE + 'px', width: SIZE + 'px' }">
-      <div v-for="t in hTicks" :key="'h' + t.y" class="tick tick-v" :style="{ top: t.y - offsetY - SIZE + 'px' }">
+    <div
+      class="ruler ruler-v"
+      :style="{ top: SIZE + 'px', height: height - SIZE + 'px', width: SIZE + 'px' }"
+    >
+      <div
+        v-for="t in hTicks"
+        :key="'h' + t.y"
+        class="tick tick-v"
+        :style="{ top: t.y - offsetY - SIZE + 'px' }"
+      >
         <span class="tick-label">{{ t.label }}</span>
       </div>
     </div>

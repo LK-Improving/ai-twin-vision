@@ -9,8 +9,10 @@ import { widgetGroups, type WidgetDefinition } from '@dt/widgets';
 import { useEditorStore } from '@/stores/editor';
 import { encodeDragPayload } from '@/composables/useEditorDnd';
 import type { ComponentListItem } from '@dt/shared-types';
+import { ComponentType } from '@dt/shared-types';
 import BaseInput from '@/components/ui/BaseInput.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
+import IconBase from '@/components/ui/IconBase.vue';
 
 const store = useEditorStore();
 const keyword = ref('');
@@ -21,25 +23,68 @@ const filteredGroups = computed(() => {
   return widgetGroups
     .map((g) => ({
       ...g,
-      widgets: g.widgets.filter((w) => !kw || w.name.toLowerCase().includes(kw) || w.type.toLowerCase().includes(kw)),
+      widgets: g.widgets.filter(
+        (w) => !kw || w.name.toLowerCase().includes(kw) || w.type.toLowerCase().includes(kw),
+      ),
     }))
     .filter((g) => g.widgets.length > 0);
 });
 
-/** 三维组件按 category 分组 */
+/** 三维/场景组件分类码 → 中文标题（与图层树命名保持一致） */
+const CATEGORY_LABEL: Record<string, string> = {
+  SCENE_3D: '三维场景',
+  GIS_3D: 'GIS 图层',
+  MODEL_3D: '精细模型',
+  TILES_3D: '倾斜摄影 / 3D Tiles',
+  TERRAIN: '地形',
+  POI: '标注点',
+  PATH: '轨迹路径',
+  PARTICLE: '环境特效',
+  CHART: '图表',
+  UI: '界面组件',
+  MEDIA: '媒体',
+  CUSTOM: '自定义',
+};
+
+/**
+ * 真正的三维组件类型白名单。
+ * 组件目录 /components 里同时混有 2D 类型（CHART_*、TEXT、METRIC_CARD、PANEL…）与
+ * 三维类型；若不过滤直接列进「三维组件」，拖到画布会创建成 3D 实例，而引擎对 DOM 类型
+ * 直接跳过 → 组件永远不显示。这里按 componentType 收敛为三维类型。
+ */
+const THREE_COMPONENT_TYPES = new Set<string>([
+  ComponentType.MODEL_3D,
+  ComponentType.TILES_3D,
+  ComponentType.TERRAIN,
+  ComponentType.POI,
+  ComponentType.PATH,
+  ComponentType.PARTICLE,
+]);
+
+/** 三维组件（按 category 分组） */
 const threeGroups = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
-  const items = store.componentCatalog.filter(
-    (c) => !kw || c.name.toLowerCase().includes(kw) || String(c.category).toLowerCase().includes(kw),
-  );
+  const items = store.componentCatalog.filter((c) => {
+    if (!THREE_COMPONENT_TYPES.has(String(c.componentType))) return false;
+    return (
+      !kw || c.name.toLowerCase().includes(kw) || String(c.category).toLowerCase().includes(kw)
+    );
+  });
   const map = new Map<string, ComponentListItem[]>();
   for (const it of items) {
     const key = String(it.category);
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(it);
   }
-  return Array.from(map.entries()).map(([category, list]) => ({ category, label: category, widgets: list }));
+  return Array.from(map.entries()).map(([category, list]) => ({
+    category,
+    label: CATEGORY_LABEL[category] ?? category,
+    widgets: list,
+  }));
 });
+
+/** 三维组件总数（分组标题计数用） */
+const threeCount = computed(() => threeGroups.value.reduce((n, g) => n + g.widgets.length, 0));
 
 const expanded = ref<Record<string, boolean>>({});
 function toggle(key: string): void {
@@ -82,44 +127,18 @@ function iconPath(def: WidgetDefinition): string {
     </div>
 
     <div class="library-scroll">
-      <!-- 2D 组件 -->
-      <section v-for="g in filteredGroups" :key="g.category" class="lib-group">
-        <div class="group-head" @click="toggle('2d-' + g.category)">
-          <IconBase :name="expanded['2d-' + g.category] === false ? 'chevron-right' : 'chevron-down'" :size="14" />
-          <span>{{ g.label }}</span>
-          <span class="count">{{ g.widgets.length }}</span>
-        </div>
-        <div v-show="expanded['2d-' + g.category] !== false" class="group-grid">
-          <div
-            v-for="w in g.widgets"
-            :key="w.type"
-            class="lib-item"
-            draggable="true"
-            :title="`拖拽到画布，或双击添加：${w.name}`"
-            @dragstart="onDragStart($event, { widgetType: w.type })"
-            @dblclick="onWidgetDblClick(w)"
-          >
-            <svg viewBox="0 0 24 24" class="lib-icon" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path :d="iconPath(w)" />
-            </svg>
-            <span class="lib-name">{{ w.name }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- 三维组件 -->
+      <!-- 三维组件（数字孪生核心，置顶） -->
       <section v-if="threeGroups.length" class="lib-group">
         <div class="group-head" @click="toggle('3d')">
-          <IconBase :name="expanded['3d'] === false ? 'chevron-right' : 'chevron-down'" :size="14" />
+          <IconBase
+            :name="expanded['3d'] === false ? 'chevron-right' : 'chevron-down'"
+            :size="14"
+          />
           <span>三维组件</span>
-          <span class="count">{{ store.componentCatalog.length }}</span>
+          <span class="count">{{ threeCount }}</span>
         </div>
         <div v-show="expanded['3d'] !== false" class="group-list">
-          <div
-            v-for="g in threeGroups"
-            :key="g.category"
-            class="three-sub"
-          >
+          <div v-for="g in threeGroups" :key="g.category" class="three-sub">
             <div class="three-sub-title">{{ g.label }}</div>
             <div
               v-for="item in g.widgets"
@@ -133,6 +152,40 @@ function iconPath(def: WidgetDefinition): string {
               <IconBase name="cube" :size="16" />
               <span class="three-name">{{ item.name }}</span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2D 组件 -->
+      <section v-for="g in filteredGroups" :key="g.category" class="lib-group">
+        <div class="group-head" @click="toggle('2d-' + g.category)">
+          <IconBase
+            :name="expanded['2d-' + g.category] === false ? 'chevron-right' : 'chevron-down'"
+            :size="14"
+          />
+          <span>{{ g.label }}</span>
+          <span class="count">{{ g.widgets.length }}</span>
+        </div>
+        <div v-show="expanded['2d-' + g.category] !== false" class="group-grid">
+          <div
+            v-for="w in g.widgets"
+            :key="w.type"
+            class="lib-item"
+            draggable="true"
+            :title="`拖拽到画布，或双击添加：${w.name}`"
+            @dragstart="onDragStart($event, { widgetType: w.type })"
+            @dblclick="onWidgetDblClick(w)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              class="lib-icon"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+            >
+              <path :d="iconPath(w)" />
+            </svg>
+            <span class="lib-name">{{ w.name }}</span>
           </div>
         </div>
       </section>

@@ -26,9 +26,11 @@ import { useToast } from '@/composables/useToast';
 export const useAuthStore = defineStore('auth', () => {
   const profile = ref<UserProfile | null>(getProfile<UserProfile>());
   const loading = ref(false);
+  /** 与 localStorage 保持同步的响应式 token，供路由守卫使用 */
+  const accessToken = ref<string>(getAccessToken());
 
   /** 是否已登录（以 accessToken 是否存在为准） */
-  const isLogin = computed(() => !!getAccessToken());
+  const isLogin = computed(() => !!accessToken.value);
 
   /** 是否为超级管理员 */
   const isSuperAdmin = computed(() => profile.value?.roles.includes('SUPER_ADMIN') ?? false);
@@ -44,6 +46,7 @@ export const useAuthStore = defineStore('auth', () => {
           refreshToken: tokens.refreshToken,
           expiresIn: tokens.expiresIn,
         });
+        accessToken.value = tokens.accessToken;
       }
       await fetchProfile();
     } finally {
@@ -69,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
         refreshToken: tokens.refreshToken,
         expiresIn: tokens.expiresIn,
       });
+      accessToken.value = tokens.accessToken;
       return true;
     } catch {
       return false;
@@ -91,12 +95,14 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       profile.value = null;
       clearAuth();
+      accessToken.value = '';
     }
   }
 
   /** 按钮级权限判定 */
   function hasPermission(code: string): boolean {
-    return profile.value?.permissions.includes(code as PermissionCode) ?? false;
+    const perms = profile.value?.permissions;
+    return Array.isArray(perms) ? perms.includes(code as PermissionCode) : false;
   }
 
   /** 角色判定 */

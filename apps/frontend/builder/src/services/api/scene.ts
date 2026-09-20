@@ -1,7 +1,11 @@
 import { http } from '@/services/request';
 import type {
+  AiSceneStats,
+  AiSceneTaskItem,
   CloneSceneRequest,
   CreateSceneRequest,
+  GenerateSceneRequest,
+  GenerateSceneResult,
   PageResult,
   PatchSceneRequest,
   PublishSceneRequest,
@@ -44,7 +48,10 @@ export function deleteSceneApi(id: string): Promise<null> {
 }
 
 /** 发布场景 */
-export function publishSceneApi(id: string, data: PublishSceneRequest): Promise<PublishSceneResult> {
+export function publishSceneApi(
+  id: string,
+  data: PublishSceneRequest,
+): Promise<PublishSceneResult> {
   return http.post<PublishSceneResult>(`/scenes/${id}/publish`, data);
 }
 
@@ -62,3 +69,17 @@ export function getSceneVersionsApi(id: string): Promise<SceneVersionItem[]> {
 export function rollbackSceneApi(id: string, versionNo: number): Promise<SceneDetail> {
   return http.post<SceneDetail>(`/scenes/${id}/versions/${versionNo}/rollback`);
 }
+
+/* ------------------------------ AI 对话式生成 ------------------------------ */
+
+/** 对话生成 3D 场景（L1：一条 prompt 即返回场景，同步生成） */
+export function generateAiSceneApi(data: GenerateSceneRequest): Promise<GenerateSceneResult> {
+  return http.post<GenerateSceneResult>('/ai/scene/generate', data);
+}
+
+/** 查询 AI 生成任务（L1 同步任务直接返回 DONE） */
+export function getAiSceneTaskApi(taskId: string): Promise<AiSceneTaskItem> {
+  return http.get<AiSceneTaskItem>(`/ai/scene/tasks/${taskId}`);
+}
+
+export type { AiSceneStats, AiSceneTaskItem, GenerateSceneResult, GenerateSceneRequest };

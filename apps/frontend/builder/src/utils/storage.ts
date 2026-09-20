@@ -10,6 +10,7 @@
 const KEY_ACCESS = 'dt_access_token';
 const KEY_REFRESH = 'dt_refresh_token';
 const KEY_EXPIRES = 'dt_expires_in';
+const KEY_ISSUED = 'dt_token_issued_at';
 const KEY_DEVICE = 'dt_device_id';
 const KEY_PROFILE = 'dt_profile';
 
@@ -68,11 +69,20 @@ export function setTokens(tokens: TokenStorage): void {
   write(KEY_ACCESS, tokens.accessToken);
   write(KEY_REFRESH, tokens.refreshToken);
   write(KEY_EXPIRES, String(tokens.expiresIn));
+  // 记录签发时刻：仅存时长无法判断"还剩多久过期"，实时通道需要它来提前续期
+  write(KEY_ISSUED, String(Date.now()));
 }
 
 export function getExpiresIn(): number {
   const raw = read(KEY_EXPIRES);
   return raw ? Number(raw) : 0;
+}
+
+/** 令牌签发时刻（毫秒时间戳）；无记录时返回 0 */
+export function getTokenIssuedAt(): number {
+  const raw = read(KEY_ISSUED);
+  const value = raw ? Number(raw) : 0;
+  return Number.isFinite(value) ? value : 0;
 }
 
 export function setProfile<T>(profile: T): void {
@@ -94,5 +104,6 @@ export function clearAuth(): void {
   remove(KEY_ACCESS);
   remove(KEY_REFRESH);
   remove(KEY_EXPIRES);
+  remove(KEY_ISSUED);
   remove(KEY_PROFILE);
 }

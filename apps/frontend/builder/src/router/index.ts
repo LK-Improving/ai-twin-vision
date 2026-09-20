@@ -37,13 +37,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '场景管理' },
       },
       {
-        path: 'scenes/:id/edit',
-        name: 'scene-edit',
-        // 由 web-editor-dev 同事提供
-        component: () => import('@/views/editor/EditorView.vue'),
-        meta: { title: '场景编辑器', permission: 'scene:edit' },
-      },
-      {
         path: 'components',
         name: 'components',
         component: () => import('@/views/component/ComponentLibraryView.vue'),
@@ -66,6 +59,12 @@ const routes: RouteRecordRaw[] = [
         name: 'devices',
         component: () => import('@/views/data/DeviceView.vue'),
         meta: { title: '设备', permission: 'device:view' },
+      },
+      {
+        path: 'alert-rules',
+        name: 'alert-rules',
+        component: () => import('@/views/data/AlertRuleView.vue'),
+        meta: { title: '告警规则', permission: 'device:manage' },
       },
       {
         path: 'system/users',
@@ -100,11 +99,27 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // 场景编辑器：独立全屏工作台（无外壳）。自身已含完整的顶部工具栏
+    // （返回/保存/发布/缩放/面板折叠）与底部状态栏，不需要 BasicLayout 的
+    // 侧边栏与顶栏——否则编辑器 100vw/100vh 会溢出容器，且画布被占去 240px+56px。
+    path: '/scenes/:id/edit',
+    name: 'scene-edit',
+    component: () => import('@/views/editor/EditorView.vue'),
+    meta: { title: '场景编辑器', permission: 'scene:edit', fullscreen: true },
+  },
+  {
     path: '/preview/:id',
     name: 'preview',
     // 由 web-editor-dev 同事提供，需登录但无外壳
     component: () => import('@/views/preview/PreviewView.vue'),
     meta: { title: '场景预览', fullscreen: true },
+  },
+  {
+    // 发布大屏公开访问：无需登录，凭证就是 URL 里的发布令牌
+    path: '/screen/:token',
+    name: 'screen',
+    component: () => import('@/views/screen/ScreenView.vue'),
+    meta: { title: '大屏', fullscreen: true, public: true },
   },
   {
     path: '/:pathMatch(.*)*',
