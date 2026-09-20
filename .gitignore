@@ -60,5 +60,5 @@ docker/data/
 # uploaded assets (local storage fallback)
 uploads/
 
-# workbuddy runtime
-.workbuddy/tmp/
+# workbuddy 工具运行时目录（tmp 日志、临时 worktree、memory），整体不入库
+.workbuddy/
