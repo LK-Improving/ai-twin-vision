@@ -80,17 +80,17 @@ pnpm dev:web                  # http://localhost:5173
 
 ## 常用命令
 
-| 命令                                       | 说明                                              |
-| ------------------------------------------ | ------------------------------------------------- |
-| `pnpm typecheck`                           | 全量 TypeScript 类型检查                          |
-| `pnpm lint` / `pnpm lint:fix`              | 逐个子项目 + 根级配置 ESLint 检查 / 修复          |
-| `pnpm lint:style`                          | Stylelint：只管 CSS 语义问题，格式归 Prettier     |
-| `pnpm lint:spell`                          | cspell 拼写检查（代码与配置；中文文档正文不纳入） |
-| `pnpm format`                              | Prettier 格式化                                   |
-| `pnpm build`                               | 全量构建                                          |
-| `pnpm test`                                | 跑测试（无用例时通过）                            |
-| `pnpm infra:down`                          | 停止基础设施                                      |
-| `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                  |
+| 命令                                       | 说明                                                        |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| `pnpm typecheck`                           | 全量 TypeScript 类型检查                                    |
+| `pnpm lint` / `pnpm lint:fix`              | 逐个子项目 + 根级配置 ESLint 检查 / 修复                    |
+| `pnpm lint:style`                          | Stylelint：只管 CSS 语义问题，格式归 Prettier               |
+| `pnpm lint:spell`                          | cspell 拼写检查（代码与配置；中文文档正文不纳入）           |
+| `pnpm format`                              | Prettier 格式化                                             |
+| `pnpm build`                               | 全量构建                                                    |
+| `pnpm test`                                | 跑全部单测（当前 128 个用例；`code-editor`/`widgets` 尚无） |
+| `pnpm infra:down`                          | 停止基础设施                                                |
+| `node scripts/ci-size-report.mjs --update` | 用当前实测值刷新前端产物体积预算                            |
 
 ## CI 流水线
 
