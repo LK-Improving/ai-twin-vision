@@ -1,6 +1,6 @@
 import type { PageQuery } from '../common/response';
 import type { SceneType } from '../common/enums';
-import type { EngineConfig, Transform } from './engine';
+import type { DeepPartial, EngineConfig, Transform } from './engine';
 import type { PageSchema, WidgetNode } from './lowcode';
 
 /** 场景列表项 */
@@ -63,7 +63,7 @@ export interface CreateSceneRequest {
   description?: string;
   sceneType?: SceneType;
   coverImage?: string;
-  config?: Partial<EngineConfig>;
+  config?: DeepPartial<EngineConfig>;
   /** 基于模板创建 */
   templateId?: string;
 }
@@ -74,7 +74,7 @@ export interface UpdateSceneRequest {
   description?: string;
   sceneType?: SceneType;
   coverImage?: string;
-  config?: Partial<EngineConfig>;
+  config?: DeepPartial<EngineConfig>;
   /**
    * 场景组件实例列表（全量覆盖）。
    * 除 componentId 外均可选：编辑器保存时可能只回传变更过的字段。
@@ -132,4 +132,29 @@ export interface PublishSceneResult {
   version: string;
   versionNo: number;
   updatedAt: string;
+  /**
+   * 发布访问令牌。场景首次发布时生成、之后保持不变，
+   * 保证已发出的分享链接不会因为重新发布而失效。
+   */
+  publishToken?: string | null;
+}
+
+/** 大屏公开运行时快照（/screen/:token 使用，不含租户等敏感信息） */
+export interface ScreenSnapshot {
+  sceneId: string;
+  name: string;
+  /** 已发布的版本号 */
+  versionNo: number;
+  config: EngineConfig;
+  components: SceneComponentInstance[];
+  layout?: PageSchema;
+}
+
+/** 大屏实时通道票据：用发布令牌换取，仅用于 Socket.IO 握手 */
+export interface ScreenTicket {
+  /** 短时效只读令牌，作为 socket.io 的 auth.token */
+  token: string;
+  /** 有效期（秒） */
+  expiresIn: number;
+  sceneId: string;
 }

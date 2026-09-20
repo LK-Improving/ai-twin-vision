@@ -67,6 +67,14 @@ export interface CesiumConfig {
     /** 深度检测，保证贴地要素不被地形遮挡 */
     depthTestAgainstTerrain?: boolean;
     maximumScreenSpaceError?: number;
+    /**
+     * 星空盒 / 太阳 / 月亮。
+     * 关掉「地球」做纯 2D 大屏设计时，必须连同这几项一起关，
+     * 否则画布上仍会残留星空背景，做不到「空白画布」。
+     */
+    skyBox?: boolean;
+    sun?: boolean;
+    moon?: boolean;
   };
   /** 环境特效 */
   environment: {
@@ -299,3 +307,37 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   canvas: { width: 1920, height: 1080, fitMode: 'CONTAIN', background: 'transparent' },
   performance: { targetFps: 60, minFps: 30, maxMemoryMb: 2048, maxDrawCall: 3000 },
 };
+
+/** 递归可选（用于只提交局部配置，后端会与默认配置 deepMerge） */
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Array<infer U>
+    ? Array<DeepPartial<U>>
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
+/**
+ * 「空白画布」预设：不渲染三维地球 / 星空 / 大气，只留一块无限 2D 设计画布。
+ *
+ * 使用场景：纯大屏搭建（往画布上摆自己的图表、面板、模型组件），
+ * 而不是数字孪生地球大屏。把它作为 scene 创建时的 config 提交即可，
+ * 之后随时可以在编辑器里用「地球」开关切回来（影像图层配置不会被删）。
+ */
+export const BLANK_CANVAS_OVERRIDE: DeepPartial<EngineConfig> = {
+  cesium: {
+    scene: {
+      globeShow: false,
+      skyAtmosphere: false,
+      skyBox: false,
+      sun: false,
+      moon: false,
+    },
+  },
+};
+
+/** 判断当前引擎配置是否处于「空白画布」状态（地球不可见） */
+export function isBlankCanvas(config: Partial<EngineConfig> | undefined | null): boolean {
+  if (!config?.cesium?.scene) return false;
+  return config.cesium.scene.globeShow === false;
+}

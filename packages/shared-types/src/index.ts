@@ -19,7 +19,9 @@ export * from './dto/scene';
 export * from './dto/component';
 export * from './dto/file';
 export * from './dto/data';
+export * from './dto/realtime';
 export * from './dto/system';
+export * from './dto/ai-scene';
 
 /** 契约版本，用于前后端兼容性校验 */
 export const CONTRACT_VERSION = '1.0.0';

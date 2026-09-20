@@ -48,6 +48,13 @@ export enum ComponentType {
   BUTTON = 'BUTTON',
   PANEL = 'PANEL',
   IFRAME = 'IFRAME',
+  // 新增：可复用科技大屏组件
+  NAV_TABS = 'NAV_TABS',
+  ALERT_LIST = 'ALERT_LIST',
+  POI_MARKER = 'POI_MARKER',
+  TOP_BAR = 'TOP_BAR',
+  PROGRESS_LIST = 'PROGRESS_LIST',
+  STAT_BLOCK = 'STAT_BLOCK',
 }
 
 /** 组件所属大类 */
@@ -130,6 +137,7 @@ export const Permissions = {
   SCENE_EDIT: 'scene:edit',
   SCENE_DELETE: 'scene:delete',
   SCENE_PUBLISH: 'scene:publish',
+  AI_SCENE_GENERATE: 'ai:scene:generate',
   COMPONENT_VIEW: 'component:view',
   COMPONENT_MANAGE: 'component:manage',
   DATASOURCE_VIEW: 'datasource:view',

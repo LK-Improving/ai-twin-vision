@@ -61,6 +61,14 @@ export enum BizCode {
   ALERT_RULE_INVALID = 40012,
   SCRIPT_EXECUTE_FAILED = 40020,
 
+  // ---------- 31000-31999 对话式生成（AI 场景）模块 ----------
+  AI_PROMPT_INVALID = 31001,
+  AI_LLM_FAILED = 31002,
+  AI_DSL_INVALID = 31003,
+  AI_GENERATE_FAILED = 31004,
+  AI_QUOTA_EXCEEDED = 31005,
+  AI_TASK_NOT_FOUND = 31006,
+
   // ---------- 50000-59999 系统模块 ----------
   FILE_TYPE_NOT_ALLOWED = 50001,
   FILE_TOO_LARGE = 50002,
@@ -115,6 +123,13 @@ export const BIZ_CODE_MESSAGE: Record<number, string> = {
   [BizCode.COMPONENT_TYPE_UNSUPPORTED]: '不支持的组件类型',
   [BizCode.TEMPLATE_NOT_FOUND]: '模板不存在',
 
+  [BizCode.AI_PROMPT_INVALID]: '生成描述为空或超出长度限制',
+  [BizCode.AI_LLM_FAILED]: 'AI 解析失败，请稍后重试',
+  [BizCode.AI_DSL_INVALID]: '场景描述解析结果不合法',
+  [BizCode.AI_GENERATE_FAILED]: '三维场景生成失败',
+  [BizCode.AI_QUOTA_EXCEEDED]: '生成次数超出配额',
+  [BizCode.AI_TASK_NOT_FOUND]: '生成任务不存在',
+
   [BizCode.DATA_SOURCE_NOT_FOUND]: '数据源不存在',
   [BizCode.DATA_SOURCE_CONNECT_FAILED]: '数据源连通性测试失败',
   [BizCode.DATA_MAPPING_INVALID]: '数据映射规则非法',
@@ -166,9 +181,19 @@ export function toHttpStatus(code: number): number {
     code === BizCode.TEMPLATE_NOT_FOUND ||
     code === BizCode.SCENE_VERSION_NOT_FOUND ||
     code === BizCode.ROLE_NOT_FOUND ||
-    code === BizCode.COMMON_RESOURCE_NOT_FOUND
+    code === BizCode.COMMON_RESOURCE_NOT_FOUND ||
+    code === BizCode.AI_TASK_NOT_FOUND
   ) {
     return 404;
+  }
+  if (code === BizCode.AI_QUOTA_EXCEEDED) {
+    return 429;
+  }
+  if (code === BizCode.AI_PROMPT_INVALID || code === BizCode.AI_DSL_INVALID) {
+    return 400;
+  }
+  if (code === BizCode.AI_LLM_FAILED || code === BizCode.AI_GENERATE_FAILED) {
+    return 500;
   }
   // 其余业务错误统一 200 承载（前端按 code 分支），保持 RESTful 语义清晰
   return 400;
