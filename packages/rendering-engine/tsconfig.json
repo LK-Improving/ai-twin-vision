@@ -7,7 +7,7 @@
     "composite": false,
     "noEmit": true,
     "paths": {
-      "@dt/shared-types": ["../shared-types/src/index.ts"]
+      "@dt/shared-types": ["../shared-types/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

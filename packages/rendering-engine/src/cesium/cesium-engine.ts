@@ -1,5 +1,11 @@
 import * as Cesium from 'cesium';
-import type { CesiumConfig, CameraView, Cartographic } from '@dt/shared-types';
+import type {
+  CesiumConfig,
+  CameraView,
+  Cartographic,
+  ImageryLayerConfig,
+  TilesetConfig,
+} from '@dt/shared-types';
 import { createImageryLayer } from './imagery';
 import { createTileset } from './tileset';
 
@@ -80,6 +86,16 @@ export class CesiumEngine {
     }
     if (s.maximumScreenSpaceError !== undefined) {
       scene.globe.maximumScreenSpaceError = s.maximumScreenSpaceError;
+    }
+    // 星空盒 / 太阳 / 月亮：做「空白画布」时必须与地球一起关，否则画布上会残留星空背景。
+    if (s.skyBox !== undefined && scene.skyBox) scene.skyBox.show = s.skyBox;
+    if (s.sun !== undefined && scene.sun) scene.sun.show = s.sun;
+    if (s.moon !== undefined && scene.moon) scene.moon.show = s.moon;
+    // 地球隐藏时把场景底色设为透明，露出容器背景（纯 2D 大屏的「空白画布」观感）
+    if (s.globeShow === false) {
+      scene.backgroundColor = Cesium.Color.TRANSPARENT;
+    } else if (s.globeShow === true) {
+      scene.backgroundColor = Cesium.Color.BLACK;
     }
   }
 
@@ -238,11 +254,75 @@ export class CesiumEngine {
     };
   }
 
-  /** 运行时更新配置（仅覆盖已提供的部分） */
+  /**
+   * 运行时更新配置（仅覆盖已提供的部分）。
+   * 除场景开关与环境外，额外协调影像/3D Tiles 图层：
+   * 修复「在编辑器删除底图（天地图等）后仍出现在地球上」的问题——
+   * 此前只有 init() 会 applyImagery，运行期 applyConfig 从不移除已加图层。
+   */
   update(config: CesiumConfig): void {
     this.config = config;
     this.applySceneOptions();
     this.applyEnvironment();
+    void this.syncImagery(config.imageryLayers);
+    void this.syncTilesets(config.tilesets);
+  }
+
+  /**
+   * 按最新配置协调影像图层：新增、移除、切换可见性与透明度。
+   * 是「删除/隐藏底图即时生效」的关键。
+   */
+  async syncImagery(configs: ImageryLayerConfig[]): Promise<void> {
+    const viewer = this.viewer;
+    if (!viewer) return;
+    const desiredIds = new Set(configs.map((c) => c.id));
+    // 1) 移除配置中已不存在的图层（用户点了删除）
+    for (const [id, layer] of this.imageryMap) {
+      if (!desiredIds.has(id)) {
+        viewer.imageryLayers.remove(layer);
+        this.imageryMap.delete(id);
+      }
+    }
+    // 2) 新增或更新仍在配置中的图层
+    for (const cfg of configs) {
+      const existing = this.imageryMap.get(cfg.id);
+      if (existing) {
+        existing.show = cfg.show;
+        existing.alpha = cfg.alpha ?? 1;
+        existing.brightness = cfg.brightness ?? 1;
+      } else if (cfg.show) {
+        // 仅当 show=true 才创建（createImageryLayer 对 show=false 会返回 undefined）
+        const layer = await createImageryLayer(cfg, this.opts.ionToken);
+        if (layer) {
+          viewer.imageryLayers.add(layer);
+          this.imageryMap.set(cfg.id, layer);
+        }
+      }
+    }
+  }
+
+  /**
+   * 按最新配置协调 3D Tiles 图层：移除已删除的、新增 show=true 的。
+   * 与 syncImagery 同属「图层增删运行期生效」修复。
+   */
+  async syncTilesets(configs: TilesetConfig[]): Promise<void> {
+    const viewer = this.viewer;
+    if (!viewer) return;
+    const desiredIds = new Set(configs.map((c) => c.id));
+    for (const [id, tileset] of this.tilesetMap) {
+      if (!desiredIds.has(id)) {
+        viewer.scene.primitives.remove(tileset);
+        this.tilesetMap.delete(id);
+      }
+    }
+    for (const cfg of configs) {
+      if (this.tilesetMap.has(cfg.id) || !cfg.show) continue;
+      const tileset = await createTileset(cfg);
+      if (tileset) {
+        viewer.scene.primitives.add(tileset);
+        this.tilesetMap.set(cfg.id, tileset);
+      }
+    }
   }
 
   /** 释放 Viewer（必须在 destroy 时调用） */

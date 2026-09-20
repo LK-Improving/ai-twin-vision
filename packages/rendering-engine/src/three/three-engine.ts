@@ -113,14 +113,19 @@ export class ThreeEngine {
   private initPostProcessing(): void {
     const pp = this.config.postProcessing;
     if (!pp) return;
-    const size = new THREE.Vector2(this.container.clientWidth || 1, this.container.clientHeight || 1);
+    const size = new THREE.Vector2(
+      this.container.clientWidth || 1,
+      this.container.clientHeight || 1,
+    );
     const composer = new EffectComposer(this.renderer);
     composer.setPixelRatio(this.renderer.getPixelRatio());
     this.renderPass = new RenderPass(this.scene, this.camera);
     composer.addPass(this.renderPass);
 
     if (pp.bloom) {
-      this.bloomPass = new UnrealBloomPass(size, 0.6, 0.4, 0.85);
+      // strength/radius 拉高一档：大屏场景的楼体棱线、发光描边需要明显泛光
+      // threshold 0.8：略高于白模漫反射亮度，只让 emissive 元素起光晕
+      this.bloomPass = new UnrealBloomPass(size, 1.25, 0.55, 0.8);
       composer.addPass(this.bloomPass);
     }
     if (pp.outline) {
