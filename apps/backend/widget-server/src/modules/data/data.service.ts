@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as net from 'node:net';
 import { Brackets, Repository } from 'typeorm';
-import { BizCode, type DataSourceItem, type DataSourceTestResult, type PageResult } from '@dt/shared-types';
+import {
+  BizCode,
+  type DataSourceItem,
+  type DataSourceTestResult,
+  type PageResult,
+} from '@dt/shared-types';
 import { DataSourceEntity, DataMappingEntity } from './entities';
 import { BizException } from '../../common/exceptions/biz.exception';
 import { normalizePage } from '../../common/utils/page.util';
@@ -74,7 +80,11 @@ export class DataSourceService {
     return this.toItem(entity);
   }
 
-  async create(tenantId: string, userId: string, dto: CreateDataSourceDto): Promise<DataSourceItem> {
+  async create(
+    tenantId: string,
+    userId: string,
+    dto: CreateDataSourceDto,
+  ): Promise<DataSourceItem> {
     const saved = await this.dsRepo.save(
       this.dsRepo.create({
         tenantId,
@@ -200,7 +210,8 @@ export class DataSourceService {
       const res = await fetch(url, {
         method,
         headers,
-        body: method === 'GET' || method === 'HEAD' ? undefined : ((cfg.body as string) ?? undefined),
+        body:
+          method === 'GET' || method === 'HEAD' ? undefined : ((cfg.body as string) ?? undefined),
         signal: controller.signal,
       });
       return {
@@ -237,8 +248,6 @@ export class DataSourceService {
     const host = String(cfg.host ?? '');
     if (!host) return { success: false, message: '缺少主机地址' };
     return new Promise<DataSourceTestResult>((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const net = require('node:net') as typeof import('node:net');
       const socket = net.createConnection({ host, port, timeout: 4000 });
       const finish = (ok: boolean, message: string): void => {
         socket.destroy();
@@ -260,7 +269,9 @@ export class DataSourceService {
     } catch {
       return { success: false, message: '连接地址格式不合法' };
     }
-    const port = Number(url.port || (url.protocol === 'https:' || url.protocol === 'wss:' ? 443 : 80));
+    const port = Number(
+      url.port || (url.protocol === 'https:' || url.protocol === 'wss:' ? 443 : 80),
+    );
     return this.testTcp({ host: url.hostname }, port, okMessage);
   }
 
@@ -270,11 +281,7 @@ export class DataSourceService {
    * 运行时代理查询：大屏节点绑定的数据源在此统一出口拉取，
    * 避免前端直连业务库造成凭据泄露。
    */
-  async queryRuntime(
-    tenantId: string,
-    id: string,
-    body: DataSourceQueryBodyDto,
-  ): Promise<unknown> {
+  async queryRuntime(tenantId: string, id: string, body: DataSourceQueryBodyDto): Promise<unknown> {
     const entity = await this.findOrFail(tenantId, id);
     const cfg = this.decryptConfig(entity.config as Record<string, unknown>);
 
