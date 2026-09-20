@@ -20,7 +20,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
-  timeout: 60_000,
+  // 共享 runner 上首屏要拉地形/影像，60s 偏紧
+  timeout: 120_000,
   reporter: process.env.CI
     ? [['github'], ['html', { open: 'never', outputFolder: 'e2e-report' }]]
     : [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }]],
