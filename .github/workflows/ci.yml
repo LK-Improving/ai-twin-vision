@@ -37,6 +37,12 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      # 必须在 typecheck 之前：rendering-engine / widgets 的 tsconfig 把 @dt/shared-types
+      # 指向 dist/index.d.ts（否则外部源码会被拉进本项目 rootDir 而报 TS6059），
+      # 所以干净 checkout 不先构建共享包就会 typecheck 失败。
+      - name: 构建共享包（为类型检查产出 dist）
+        run: pnpm build:pkg
+
       - name: 类型检查（含 e2e 代码）
         run: pnpm typecheck
 
@@ -198,6 +204,11 @@ jobs:
           cp .env.example .env.dev
           pnpm --filter @dt/widget-server schema:init
           pnpm db:seed
+
+      # shared-types 的 main/types 指向 dist（其中 BizCode/ComponentType 是运行时枚举），
+      # vite dev 需要它才能解析 @dt/shared-types；缺这一步前端会起不来。
+      - name: 构建共享包
+        run: pnpm build:pkg
 
       # 同 api-smoke：后端、前端、用例必须在同一个 step 里，否则 runner 会在 step 之间杀掉进程组。
       # 前端用 5199 + strictPort：端口被占就直接失败，不静默跳端口（否则 baseURL 与实测不在同一处）。
