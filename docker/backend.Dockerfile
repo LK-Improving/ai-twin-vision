@@ -15,9 +15,12 @@ RUN pnpm install --frozen-lockfile=false \
 COPY packages/shared-types ./packages/shared-types
 COPY apps/backend/widget-server ./apps/backend/widget-server
 
+# pnpm v10 默认只允许从开了 inject-workspace-packages 的 workspace 做 deploy，
+# 否则报 ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE。改 .npmrc 会影响整个仓库的安装语义
+# （硬链接会变成拷贝），所以这里只给 deploy 加 --legacy 保持原行为。
 RUN pnpm --filter @dt/shared-types build \
  && pnpm --filter @dt/widget-server build \
- && pnpm deploy --filter @dt/widget-server --prod /output
+ && pnpm deploy --legacy --filter @dt/widget-server --prod /output
 
 # ---------- runtime stage ----------
 FROM node:20-alpine AS runtime

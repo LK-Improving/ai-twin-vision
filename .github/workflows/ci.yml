@@ -198,17 +198,18 @@ jobs:
         run: npx playwright install --with-deps chromium
         if: steps.pw-cache.outputs.cache-hit != 'true'
 
+      # 必须在任何 ts-node / vite 之前：shared-types 的 main/types 指向 dist，
+      # 而后端 entities 从 @dt/shared-types 导入枚举、BizCode/ComponentType 还是运行时值。
+      # 首跑就是在这里报 `error TS2307: Cannot find module '@dt/shared-types'`。
+      - name: 构建共享包
+        run: pnpm build:pkg
+
       - name: 由模板生成环境并准备数据库
         run: |
           set -euo pipefail
           cp .env.example .env.dev
           pnpm --filter @dt/widget-server schema:init
           pnpm db:seed
-
-      # shared-types 的 main/types 指向 dist（其中 BizCode/ComponentType 是运行时枚举），
-      # vite dev 需要它才能解析 @dt/shared-types；缺这一步前端会起不来。
-      - name: 构建共享包
-        run: pnpm build:pkg
 
       # 同 api-smoke：后端、前端、用例必须在同一个 step 里，否则 runner 会在 step 之间杀掉进程组。
       # 前端用 5199 + strictPort：端口被占就直接失败，不静默跳端口（否则 baseURL 与实测不在同一处）。
