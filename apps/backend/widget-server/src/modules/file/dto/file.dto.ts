@@ -95,9 +95,10 @@ export class CreateModelAssetDto {
   @MaxLength(200)
   assetName: string;
 
-  @ApiProperty({ description: '资产类型' })
+  @ApiProperty({ description: '资产类型（对应 DB 列宽 10，如 GLTF/GLB/FBX/OBJ/TILES_3D）' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(10, { message: '资产类型过长（≤10 字符，如 GLB/GLTF/FBX/OBJ/TILES_3D）' })
   assetType: string;
 
   @ApiProperty({ description: '关联文件 ID' })

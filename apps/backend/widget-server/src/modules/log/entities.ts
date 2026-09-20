@@ -41,7 +41,7 @@ export class OperationLogEntity {
   @Column({ name: 'ip_address', length: 45 })
   ipAddress: string;
 
-  @Column({ name: 'user_agent', length: 500, nullable: true })
+  @Column({ type: 'varchar', name: 'user_agent', length: 500, nullable: true })
   userAgent: string | null;
 
   @Column({ name: 'created_at', type: 'timestamptz', default: () => 'NOW()' })
@@ -71,10 +71,10 @@ export class SystemLogEntity {
   @Column({ name: 'stack_trace', type: 'text', nullable: true })
   stackTrace: string | null;
 
-  @Column({ name: 'hostname', length: 100, nullable: true })
+  @Column({ type: 'varchar', name: 'hostname', length: 100, nullable: true })
   hostname: string | null;
 
-  @Column({ name: 'trace_id', length: 64, nullable: true })
+  @Column({ type: 'varchar', name: 'trace_id', length: 64, nullable: true })
   traceId: string | null;
 
   @Column({ name: 'created_at', type: 'timestamptz', default: () => 'NOW()' })

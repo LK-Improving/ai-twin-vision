@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { join, resolve } from 'node:path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { DataModule } from './modules/data/data.module';
 import { IotModule } from './modules/iot/iot.module';
 import { LogModule } from './modules/log/log.module';
 import { HealthModule } from './modules/health/health.module';
+import { AiModule } from './modules/ai/ai.module';
 import configuration from './config/configuration';
 
 /**
@@ -32,12 +34,26 @@ import configuration from './config/configuration';
  *      → TransformInterceptor（统一 ApiResponse 包裹）
  * 异常统一由 AllExceptionsFilter 兜底。
  */
+/**
+ * 环境文件解析（约定见《详细设计》6.1）：多环境文件为 .env.dev / .env.test / .env.prod，
+ * 统一放在**仓库根目录**，因此需从当前模块向上一级级回溯到 root，
+ * 否则在 apps/backend/widget-server 下启动时会找不到文件、静默回落到代码默认值。
+ */
+const ENV_FILE_ALIAS: Record<string, string> = {
+  development: 'dev',
+  production: 'prod',
+  test: 'test',
+};
+const rootDir = resolve(__dirname, '../../../../');
+const envFileName = ENV_FILE_ALIAS[process.env.NODE_ENV ?? ''] ?? 'dev';
+const envFilePath = join(rootDir, `.env.${envFileName}`);
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      envFilePath: [`.env.${process.env.NODE_ENV ?? 'development'}`, '.env'],
+      envFilePath: [envFilePath, '.env'],
       ignoreEnvFile: false,
     }),
     DatabaseModule,
@@ -51,6 +67,7 @@ import configuration from './config/configuration';
     IotModule,
     LogModule,
     HealthModule,
+    AiModule,
   ],
   providers: [
     // 全局参数校验：自动剥离未声明字段，数组与嵌套对象一并转换

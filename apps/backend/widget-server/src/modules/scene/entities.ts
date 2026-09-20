@@ -5,6 +5,8 @@ import type { EngineConfig, PageSchema, SceneType, Transform } from '@dt/shared-
 /** 场景表 biz_scene */
 @Entity('biz_scene')
 @Index('idx_scene_tenant_status', ['tenantId', 'status'])
+// 发布令牌用于 /screen/:token 公开访问，需唯一；Postgres 唯一索引允许多个 NULL
+@Index('idx_scene_publish_token', ['publishToken'], { unique: true })
 export class SceneEntity extends BaseEntity {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
@@ -15,7 +17,7 @@ export class SceneEntity extends BaseEntity {
   @Column({ name: 'description', type: 'text', nullable: true })
   description: string | null;
 
-  @Column({ name: 'cover_image', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'cover_image', length: 255, nullable: true })
   coverImage: string | null;
 
   /** MACRO / MICRO / HYBRID */
@@ -42,6 +44,13 @@ export class SceneEntity extends BaseEntity {
   @Column({ name: 'publish_version', type: 'int', nullable: true })
   publishVersion: number | null;
 
+  /**
+   * 发布访问令牌：首次发布时生成，之后保持不变，
+   * 避免已发出的分享链接因重新发布而失效。
+   */
+  @Column({ type: 'varchar', name: 'publish_token', length: 64, nullable: true })
+  publishToken: string | null;
+
   @Column({ name: 'creator_id', type: 'uuid' })
   creatorId: string;
 }
@@ -56,7 +65,7 @@ export class SceneComponentEntity extends BaseEntity {
   @Column({ name: 'component_id', type: 'uuid' })
   componentId: string;
 
-  @Column({ name: 'name', length: 200, nullable: true })
+  @Column({ type: 'varchar', name: 'name', length: 200, nullable: true })
   name: string | null;
 
   /** 组件实例化配置（对应 config_schema 的取值） */
@@ -67,7 +76,7 @@ export class SceneComponentEntity extends BaseEntity {
   @Column({ name: 'position', type: 'jsonb', default: () => "'{}'::jsonb" })
   position: Transform;
 
-  @Column({ name: 'layer_id', length: 64, nullable: true })
+  @Column({ type: 'varchar', name: 'layer_id', length: 64, nullable: true })
   layerId: string | null;
 
   @Column({ name: 'sort_order', type: 'int', default: 0 })

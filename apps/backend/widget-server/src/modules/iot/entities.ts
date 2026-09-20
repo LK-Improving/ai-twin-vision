@@ -48,7 +48,7 @@ export class DevicePropertyEntity extends BaseEntity {
   @Column({ name: 'property_type', length: 20 })
   propertyType: string;
 
-  @Column({ name: 'unit', length: 20, nullable: true })
+  @Column({ type: 'varchar', name: 'unit', length: 20, nullable: true })
   unit: string | null;
 
   @Column({ name: 'min_value', type: 'decimal', nullable: true })
@@ -57,7 +57,7 @@ export class DevicePropertyEntity extends BaseEntity {
   @Column({ name: 'max_value', type: 'decimal', nullable: true })
   maxValue: string | null;
 
-  @Column({ name: 'default_value', length: 100, nullable: true })
+  @Column({ type: 'varchar', name: 'default_value', length: 100, nullable: true })
   defaultValue: string | null;
 }
 

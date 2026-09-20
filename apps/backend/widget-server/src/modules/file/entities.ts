@@ -25,7 +25,8 @@ export class FileEntity extends CreateOnlyEntity {
   @Column({ name: 'storage_type', length: 10, default: 'LOCAL' })
   storageType: string;
 
-  @Column({ name: 'md5', length: 32 })
+  /** 内容指纹：md5(32) 或客户端弱指纹 sha256(64)，故列宽 64 */
+  @Column({ name: 'md5', length: 64 })
   md5: string;
 
   @Column({ name: 'creator_id', type: 'uuid' })
@@ -52,7 +53,7 @@ export class ModelAssetEntity extends BaseEntity {
   @Column({ name: 'file_id', type: 'uuid' })
   fileId: string;
 
-  @Column({ name: 'thumbnail', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'thumbnail', length: 255, nullable: true })
   thumbnail: string | null;
 
   /** LOD 层级配置：{HIGH:url, MEDIUM:url, LOW:url} */

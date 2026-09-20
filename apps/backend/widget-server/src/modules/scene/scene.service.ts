@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { randomBytes } from 'node:crypto';
 import { DataSource, In, Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import {
@@ -17,6 +18,7 @@ import {
   type SceneDetail,
   type SceneListItem,
   type SceneVersionItem,
+  type ScreenSnapshot,
 } from '@dt/shared-types';
 import { SceneComponentEntity, SceneEntity, SceneVersionEntity } from './entities';
 import { ComponentEntity, TemplateEntity } from '../component/entities';
@@ -140,6 +142,44 @@ export class SceneService {
       components,
       layout: this.normalizeLayout(scene.layout),
     };
+  }
+
+  /**
+   * 大屏公开快照（/screen/:token）。
+   * 只暴露渲染必需数据，且仅对「已发布」场景生效，草稿不会因令牌泄露而外泄。
+   */
+  async screenSnapshot(token: string): Promise<ScreenSnapshot> {
+    const scene = await this.findPublishedByToken(token);
+    const components = await this.loadComponents(scene.id);
+    return {
+      sceneId: scene.id,
+      name: scene.name,
+      versionNo: scene.publishVersion ?? 0,
+      config: deepMerge(DEFAULT_ENGINE_CONFIG, scene.engineConfig as Record<string, any>),
+      components,
+      layout: this.normalizeLayout(scene.layout),
+    };
+  }
+
+  /**
+   * 解析发布令牌对应的场景与租户（供签发 WS 票据使用）。
+   * 租户信息只留在服务端，不会随快照下发给前端。
+   */
+  async resolveScreenTarget(token: string): Promise<{ sceneId: string; tenantId: string }> {
+    const scene = await this.findPublishedByToken(token);
+    return { sceneId: scene.id, tenantId: scene.tenantId };
+  }
+
+  /** 按发布令牌查找已发布场景；不存在或未发布时抛业务异常 */
+  private async findPublishedByToken(token: string): Promise<SceneEntity> {
+    if (!token || token.length > 64) {
+      throw new BizException(BizCode.SCENE_NOT_FOUND);
+    }
+    const scene = await this.sceneRepo.findOne({ where: { publishToken: token } });
+    if (!scene || scene.status !== SceneStatus.PUBLISHED) {
+      throw new BizException(BizCode.SCENE_NOT_FOUND);
+    }
+    return scene;
   }
 
   /** 创建场景，可基于模板初始化 */
@@ -312,6 +352,8 @@ export class SceneService {
     }
 
     const nextVersionNo = (scene.publishVersion ?? 0) + 1;
+    // 令牌只在首次发布时生成：保证已发出的分享链接在重新发布后依然有效
+    const publishToken = scene.publishToken ?? randomBytes(12).toString('base64url');
 
     await this.dataSource.transaction(async (manager) => {
       await manager.getRepository(SceneVersionEntity).insert({
@@ -332,6 +374,7 @@ export class SceneService {
           status: SceneStatus.PUBLISHED,
           publishVersion: nextVersionNo,
           version: scene.version + 1,
+          publishToken,
         },
       );
     });
@@ -345,6 +388,7 @@ export class SceneService {
       version: toSemver(nextVersionNo * 10),
       versionNo: nextVersionNo,
       updatedAt: updated.updatedAt.toISOString(),
+      publishToken: updated.publishToken,
     };
   }
 
@@ -470,14 +514,11 @@ export class SceneService {
       const current = await sceneRepo.findOne({ where: { id } });
       if (!current) throw new BizException(BizCode.SCENE_NOT_FOUND);
 
-      await sceneRepo.update(
-        { id },
-        {
-          engineConfig: snapshot.config ?? current.engineConfig,
-          layout: snapshot.layout ?? current.layout,
-          version: current.version + 1,
-        } as unknown as QueryDeepPartialEntity<SceneEntity>,
-      );
+      await sceneRepo.update({ id }, {
+        engineConfig: snapshot.config ?? current.engineConfig,
+        layout: snapshot.layout ?? current.layout,
+        version: current.version + 1,
+      } as unknown as QueryDeepPartialEntity<SceneEntity>);
 
       // 快照组件全量覆盖（先物理清空当前实例，再按快照重建）
       await componentRepo.delete({ sceneId: id });

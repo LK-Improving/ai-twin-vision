@@ -69,6 +69,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         bizCode = BizCode.COMMON_OPERATION_FAILED;
         message = '数据库操作失败';
       }
+      // 非生产环境回带 PG 错误码/详情，便于快速定位（如 22001 列宽溢出）；生产不外泄
+      if (process.env.NODE_ENV !== 'production') {
+        data = { dbCode: driverError.code ?? null, dbDetail: driverError.detail ?? null };
+      }
       this.logger.error(`数据库异常 ${driverError.code ?? ''}: ${exception.message}`);
     } else if (exception instanceof Error) {
       message = process.env.NODE_ENV === 'production' ? '服务器内部错误' : exception.message;

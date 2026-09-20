@@ -104,3 +104,28 @@ export class TelemetryQueryDto {
   @Min(1)
   limit?: number;
 }
+
+/** 遥测聚合历史查询（降采样） */
+export class TelemetryHistoryQueryDto {
+  @ApiPropertyOptional({ description: '属性编码，多个用逗号分隔' })
+  @IsOptional()
+  @IsString()
+  propertyCodes?: string;
+
+  @ApiPropertyOptional({ description: '开始时间（ISO），缺省为 24 小时前' })
+  @IsOptional()
+  @IsString()
+  startTime?: string;
+
+  @ApiPropertyOptional({ description: '结束时间（ISO），缺省为当前时间' })
+  @IsOptional()
+  @IsString()
+  endTime?: string;
+
+  @ApiPropertyOptional({
+    description: '聚合粒度（10s/30s/1m/5m/1h/1d），缺省按时间范围自动推算（约 300 桶）',
+  })
+  @IsOptional()
+  @IsString()
+  interval?: string;
+}

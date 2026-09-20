@@ -40,7 +40,14 @@ export class ComponentQueryDto extends PageQueryDto implements ComponentQuery {
 
   @ApiPropertyOptional({ description: '是否仅查公共组件' })
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  // 注意：必须保留 undefined（未传参=不按公开与否过滤）。
+  // 早期写法 `value === true || value === 'true'` 会把 undefined 也转成 false，
+  // 再配合 paginate 里的 `if (isPublic !== undefined)` 就会追加 `AND is_public = false`，
+  // 把全部公共组件滤空 → 编辑器「三维组件」目录为空、无「精细模型」入口。
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value === true || value === 'true';
+  })
   @IsBoolean()
   isPublic?: boolean;
 }

@@ -10,10 +10,10 @@ export class TenantEntity extends BaseEntity {
   @Column({ name: 'tenant_name', length: 100 })
   tenantName: string;
 
-  @Column({ name: 'contact_person', length: 50, nullable: true })
+  @Column({ type: 'varchar', name: 'contact_person', length: 50, nullable: true })
   contactPerson: string | null;
 
-  @Column({ name: 'contact_phone', length: 20, nullable: true })
+  @Column({ type: 'varchar', name: 'contact_phone', length: 20, nullable: true })
   contactPhone: string | null;
 
   /** 1-正常 0-冻结 */
@@ -38,16 +38,16 @@ export class UserEntity extends BaseEntity {
   @Column({ name: 'password', length: 255, select: false })
   password: string;
 
-  @Column({ name: 'real_name', length: 50, nullable: true })
+  @Column({ type: 'varchar', name: 'real_name', length: 50, nullable: true })
   realName: string | null;
 
-  @Column({ name: 'email', length: 100, nullable: true })
+  @Column({ type: 'varchar', name: 'email', length: 100, nullable: true })
   email: string | null;
 
-  @Column({ name: 'phone', length: 20, nullable: true })
+  @Column({ type: 'varchar', name: 'phone', length: 20, nullable: true })
   phone: string | null;
 
-  @Column({ name: 'avatar', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'avatar', length: 255, nullable: true })
   avatar: string | null;
 
   /** 1-启用 0-禁用 */
@@ -98,7 +98,7 @@ export class PermissionEntity extends CreateOnlyEntity {
   @Column({ name: 'parent_id', type: 'uuid', nullable: true })
   parentId: string | null;
 
-  @Column({ name: 'path', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'path', length: 255, nullable: true })
   path: string | null;
 
   @Column({ name: 'sort_order', type: 'int', default: 0 })
@@ -147,13 +147,13 @@ export class RefreshTokenEntity extends CreateOnlyEntity {
   @Column({ name: 'token_hash', length: 64 })
   tokenHash: string;
 
-  @Column({ name: 'device_id', length: 128, nullable: true })
+  @Column({ type: 'varchar', name: 'device_id', length: 128, nullable: true })
   deviceId: string | null;
 
-  @Column({ name: 'user_agent', length: 500, nullable: true })
+  @Column({ type: 'varchar', name: 'user_agent', length: 500, nullable: true })
   userAgent: string | null;
 
-  @Column({ name: 'ip_address', length: 45, nullable: true })
+  @Column({ type: 'varchar', name: 'ip_address', length: 45, nullable: true })
   ipAddress: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })

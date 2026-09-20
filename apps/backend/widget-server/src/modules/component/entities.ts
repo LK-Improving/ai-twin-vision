@@ -21,10 +21,10 @@ export class ComponentEntity extends BaseEntity {
   @Column({ name: 'category', length: 50 })
   category: string;
 
-  @Column({ name: 'model_file_path', length: 500, nullable: true })
+  @Column({ type: 'varchar', name: 'model_file_path', length: 500, nullable: true })
   modelFilePath: string | null;
 
-  @Column({ name: 'thumbnail', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'thumbnail', length: 255, nullable: true })
   thumbnail: string | null;
 
   /** 属性面板 Schema，驱动前端动态表单 */
@@ -65,7 +65,7 @@ export class TemplateEntity extends BaseEntity {
   @Column({ name: 'template_data', type: 'jsonb' })
   templateData: Record<string, unknown>;
 
-  @Column({ name: 'cover_image', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'cover_image', length: 255, nullable: true })
   coverImage: string | null;
 
   @Column({ name: 'is_public', type: 'boolean', default: false })

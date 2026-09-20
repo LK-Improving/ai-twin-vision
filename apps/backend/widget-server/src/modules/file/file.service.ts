@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -27,6 +27,22 @@ import { PageQueryDto } from '../../common/dto/page-query.dto';
 
 /** 默认分片大小 5MB */
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
+
+/**
+ * 归一化内容指纹：接受真实 md5(32) 或客户端弱指纹 sha256(64) 等 16–64 位十六进制串。
+ * 非法或超长（前端曾误传 64 位 SHA-256 指纹，而列宽曾是 32，导致 22001 落库失败）
+ * 一律回退为服务端真实 md5，保证写入永不越界。
+ */
+function normalizeDigest(raw: string | undefined | null, buffer: Buffer): string {
+  const v = (raw ?? '').trim();
+  if (/^[0-9a-f]{16,64}$/i.test(v)) return v.toLowerCase();
+  return crypto.createHash('md5').update(buffer).digest('hex');
+}
+
+/** 是否为可安全用作存储路径令牌的十六进制指纹 */
+function isHexFingerprint(v: string): boolean {
+  return /^[0-9a-f]{16,64}$/i.test(v.trim());
+}
 
 interface UploadTaskMeta {
   uploadId: string;
@@ -67,7 +83,10 @@ export class FileService {
     @InjectRepository(ModelAssetEntity)
     private readonly assetRepo: Repository<ModelAssetEntity>,
   ) {
-    this.rootDir = path.resolve(process.cwd(), this.config.get<string>('storage.localDir', 'uploads'));
+    this.rootDir = path.resolve(
+      process.cwd(),
+      this.config.get<string>('storage.localDir', 'uploads'),
+    );
     this.chunkDir = path.join(this.rootDir, '.chunks');
     void fsp.mkdir(this.chunkDir, { recursive: true });
   }
@@ -92,8 +111,10 @@ export class FileService {
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const base = this.config.get<string>('storage.localDir', 'uploads');
-    return `${base}/${yyyy}/${mm}/${dd}/${md5}${ext}`;
+    // storage.localDir 配置为绝对路径，入库/拼 URL 必须用相对根目录的路径，
+    // 否则会把 D:\xxx 整段写进 storagePath，导致 /static URL 永远 404
+    const relBase = path.relative(process.cwd(), this.rootDir).replace(/\\/g, '/');
+    return `${relBase}/${yyyy}/${mm}/${dd}/${md5}${ext}`;
   }
 
   /** 防止路径穿越：解析后必须位于根目录内 */
@@ -114,10 +135,12 @@ export class FileService {
   ): Promise<FileItem> {
     this.assertAllowed(file.originalname, file.size);
     const ext = path.extname(file.originalname).toLowerCase();
-    const digest = md5 && md5.length >= 16 ? md5 : crypto.createHash('md5').update(file.buffer).digest('hex');
+    const digest = normalizeDigest(md5, file.buffer);
 
     // 秒传命中
-    const existed = await this.fileRepo.findOne({ where: { tenantId, md5: digest, deletedAt: null as never } });
+    const existed = await this.fileRepo.findOne({
+      where: { tenantId, md5: digest, deletedAt: null as never },
+    });
     if (existed) return this.toFileItem(existed);
 
     const storagePath = this.buildStoragePath(digest, ext);
@@ -141,7 +164,10 @@ export class FileService {
   }
 
   /** 初始化分片上传：命中 md5 则直接秒传 */
-  async initMultipart(tenantId: string, dto: InitMultipartDto): Promise<{
+  async initMultipart(
+    tenantId: string,
+    dto: InitMultipartDto,
+  ): Promise<{
     uploadId: string;
     uploadedChunks: number[];
     chunkSize: number;
@@ -214,18 +240,29 @@ export class FileService {
       if (!done.has(i)) missing.push(i);
     }
     if (missing.length > 0) {
-      throw new BizException(BizCode.COMMON_PARAM_INVALID, `分片缺失：${missing.slice(0, 10).join(',')}`);
+      throw new BizException(
+        BizCode.COMMON_PARAM_INVALID,
+        `分片缺失：${missing.slice(0, 10).join(',')}`,
+      );
     }
 
     const ext = path.extname(dto.fileName).toLowerCase();
-    const storagePath = this.buildStoragePath(dto.md5 || task.md5, ext);
+    const provided = (dto.md5 || task.md5 || '').trim();
+    // 路径令牌只允许十六进制指纹，非法值改用随机串，避免污染/穿越存储路径
+    const pathToken = isHexFingerprint(provided)
+      ? provided.toLowerCase()
+      : crypto.randomUUID().replace(/-/g, '');
+    const storagePath = this.buildStoragePath(pathToken, ext);
     const abs = this.resolveSafe(storagePath);
     await fsp.mkdir(path.dirname(abs), { recursive: true });
 
+    // 边合并边算真实 md5，供客户端指纹非法时兜底
+    const hash = crypto.createHash('md5');
     const write = fs.createWriteStream(abs);
     try {
       for (let i = 0; i < task.totalChunks; i += 1) {
         const buf = await fsp.readFile(path.join(this.chunkDir, dto.uploadId, String(i)));
+        hash.update(buf);
         if (!write.write(buf)) {
           await new Promise<void>((resolve) => write.once('drain', resolve));
         }
@@ -249,7 +286,7 @@ export class FileService {
         fileSize: String(task.fileSize),
         storagePath,
         storageType: 'LOCAL',
-        md5: dto.md5 || task.md5,
+        md5: isHexFingerprint(provided) ? provided.toLowerCase() : hash.digest('hex'),
         creatorId: userId,
       }),
     );
@@ -288,7 +325,15 @@ export class FileService {
       .take(limit)
       .getManyAndCount();
 
-    return { total, page, limit, dataList: rows.map((r) => this.toAssetItem(r)) };
+    // 资产 url 必须对齐到真实文件（/static/yyyy/MM/dd/<digest><ext>），
+    // 否则 GLTFLoader 按 /static/model/:id 取会 404。一次性按 fileId 批量取回。
+    const fileMap = await this.loadAssetFileMap(rows.map((r) => r.fileId));
+    return {
+      total,
+      page,
+      limit,
+      dataList: rows.map((r) => this.toAssetItem(r, fileMap.get(r.fileId))),
+    };
   }
 
   async createAsset(
@@ -313,7 +358,7 @@ export class FileService {
         creatorId: userId,
       }),
     );
-    return this.toAssetItem(saved);
+    return this.toAssetItem(saved, file);
   }
 
   async removeAsset(tenantId: string, id: string): Promise<void> {
@@ -341,14 +386,20 @@ export class FileService {
     };
   }
 
-  private toAssetItem(entity: ModelAssetEntity): ModelAssetItem {
+  private toAssetItem(entity: ModelAssetEntity, file?: FileEntity | null): ModelAssetItem {
     const prefix = process.env.UPLOAD_URL_PREFIX ?? '/static';
+    // 关键：资产 url 必须指向真实文件落盘路径（与 toFileItem 一致），
+    // 后端 useStaticAssets 才能按 /static/<storagePath> 直接流式返回 GLB。
+    // 文件未挂载时回落到 /model/:id（前端基本用不到，仅防御）。
+    const url = file
+      ? `${prefix}/${file.storagePath.replace(/^uploads\//, '')}`
+      : `${prefix}/model/${entity.id}`;
     return {
       id: entity.id,
       assetName: entity.assetName,
       assetType: entity.assetType,
       fileId: entity.fileId,
-      url: `${prefix}/model/${entity.id}`,
+      url,
       thumbnailUrl: entity.thumbnail,
       lodLevels: entity.lodLevels,
       boundingBox: entity.boundingBox as ModelAssetItem['boundingBox'],
@@ -358,5 +409,15 @@ export class FileService {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
     };
+  }
+
+  /** 批量取回资产关联文件的落盘路径，供 toAssetItem 拼真实 url（避免 N+1） */
+  private async loadAssetFileMap(fileIds: string[]): Promise<Map<string, FileEntity>> {
+    const map = new Map<string, FileEntity>();
+    const uniq = Array.from(new Set(fileIds.filter(Boolean)));
+    if (uniq.length === 0) return map;
+    const files = await this.fileRepo.find({ where: { id: In(uniq) } });
+    for (const f of files) map.set(f.id, f);
+    return map;
   }
 }

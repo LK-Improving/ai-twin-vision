@@ -17,6 +17,7 @@ import { SceneType } from '@dt/shared-types';
 import type {
   CloneSceneRequest,
   CreateSceneRequest,
+  DeepPartial,
   EngineConfig,
   PageSchema,
   PublishSceneRequest,
@@ -120,7 +121,7 @@ export class CreateSceneDto implements CreateSceneRequest {
   @ApiPropertyOptional({ description: '引擎初始配置，缺省使用平台默认配置' })
   @IsOptional()
   @IsObject()
-  config?: Partial<EngineConfig>;
+  config?: DeepPartial<EngineConfig>;
 
   @ApiPropertyOptional({ description: '基于模板创建' })
   @IsOptional()
@@ -154,7 +155,7 @@ export class UpdateSceneDto implements UpdateSceneRequest {
   @ApiPropertyOptional({ description: '引擎配置（Cesium / Three.js）' })
   @IsOptional()
   @IsObject()
-  config?: Partial<EngineConfig>;
+  config?: DeepPartial<EngineConfig>;
 
   @ApiPropertyOptional({ description: '场景组件实例列表（全量覆盖）', type: [SceneComponentDto] })
   @IsOptional()
@@ -197,7 +198,7 @@ export class PatchSceneDto implements Partial<UpdateSceneRequest> {
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()
-  config?: Partial<EngineConfig>;
+  config?: DeepPartial<EngineConfig>;
 
   @ApiPropertyOptional({ type: [SceneComponentDto] })
   @IsOptional()
