@@ -49,6 +49,9 @@ watch(
         @click.self="close"
       >
         <div
+          role="dialog"
+          aria-modal="true"
+          :aria-label="title ?? '提示'"
           class="flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-panel"
           :style="{ maxWidth: width }"
         >
