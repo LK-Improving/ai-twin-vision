@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import './diagnostics';
 
 /**
  * 事件绑定从场景 DSL 到运行时执行（迭代 5.5 的回归测试）。

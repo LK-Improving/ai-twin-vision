@@ -236,14 +236,24 @@ jobs:
 
           pnpm test:e2e
 
-      - name: 上传失败现场
+      # 分两个 artifact 上传：之前把两棵树放进同一个包，导致 `gh run download` 在解压时
+      # 撞上同名条目直接中断（error extracting "e2e-report/data/<hash>.zip": The file exists），
+      # 等于故障发生了但证据拿不到。现在即使下载失败，上一步的 [diag] 日志也足够定位。
+      - name: 上传 HTML 报告
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
-          path: |
-            e2e-report/
-            e2e/.artifacts/
+          name: e2e-html-report
+          path: e2e-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: 上传测试现场（trace / 截图 / 视频）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e/.artifacts/
           retention-days: 7
           if-no-files-found: ignore
 
