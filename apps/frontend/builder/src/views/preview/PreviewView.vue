@@ -334,6 +334,12 @@ function initRuntimes(): void {
   eventRuntime.bindDomEvents();
   eventRuntime.bindViewer();
 
+  // 仅开发态暴露运行时句柄：e2e 需要驱动「脚本 → 能力白名单 → DOM 效果」这一段闭环，
+  // 而事件绑定面板的 UI 流程（四层自定义下拉）flake 成本过高。生产构建不挂载此字段。
+  if (import.meta.env.DEV) {
+    (window as unknown as { __dtEventRuntime?: EventRuntime }).__dtEventRuntime = eventRuntime;
+  }
+
   // 实时通道：IoT 绑定节点改为推送驱动，断线自动回退轮询（见 data-runtime.attachRealtime）
   dataRuntime.attachRealtime(realtime);
   realtimeConnected.value = realtime.connected;

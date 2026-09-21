@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { addWidgetAndVerify, openFirstSceneEditor } from './helpers';
 
 /**
  * 脚本沙箱的浏览器内回归（迭代 5.1b）—— 把迭代 0 当时靠手工点验的三件事固化下来。
@@ -133,5 +134,136 @@ test.describe('脚本沙箱（真实浏览器 + 真实 Worker）', () => {
     // 合法脚本不能被误伤，否则守卫等于摆设
     expect(blocked.clean).toBe(0);
     expect(blocked.inComment).toBe(0);
+  });
+});
+
+/**
+ * 能力闭环：脚本经能力白名单真的改变页面。
+ *
+ * 上面那些用例证明的是「脚本被隔离」（拦得住）；这一条证明的是反方向——
+ * 「白名单内的调用真能生效」，两者合起来才说明沙箱是可用的能力边界而不是单纯的禁用。
+ *
+ * 为何用 DEV 句柄而不是事件面板 UI：`setBindings()` / `fire()` 本身就是生产运行时的
+ * 公开入口（PreviewView 就是这么调的），只把「绑定从哪来」这一步换成直接注入；
+ * 而面板那四层自定义下拉的交互与要证明的能力链路无关，却会成为主要碎点。
+ */
+test.describe('能力闭环（脚本 → ctx.nodes.setVisible → DOM）', () => {
+  /** 在预览页里注入一条 RUN_SCRIPT 绑定并触发 */
+  async function fireScriptBinding(
+    page: Page,
+    sourceId: string,
+    targetId: string,
+    visible: boolean,
+  ): Promise<string> {
+    return page.evaluate(
+      ([src, target, next]) => {
+        const rt = (
+          window as unknown as {
+            __dtEventRuntime?: {
+              setBindings: (list: unknown[]) => void;
+              fire: (sourceId: string, event: string) => void;
+            };
+          }
+        ).__dtEventRuntime;
+        if (!rt) return 'no-handle';
+        rt.setBindings([
+          {
+            id: 'e2e-capability',
+            sourceId: src,
+            event: 'click',
+            enabled: true,
+            actions: [
+              {
+                id: 'act-1',
+                type: 'RUN_SCRIPT',
+                params: {
+                  script: `await ctx.nodes.setVisible('${target}', ${next}); return 1;`,
+                },
+              },
+            ],
+          },
+        ]);
+        rt.fire(src, 'click');
+        return 'fired';
+      },
+      [sourceId, targetId, visible] as const,
+    );
+  }
+
+  test('事件脚本能通过能力白名单隐藏并恢复一个组件', async ({ page }) => {
+    // 先保证场景里至少有一个 2D 节点（不依赖种子数据恰好有）
+    await openFirstSceneEditor(page);
+    await addWidgetAndVerify(page);
+
+    const sceneId = new URL(page.url()).pathname.split('/scenes/')[1].split('/')[0];
+    expect(sceneId).toBeTruthy();
+
+    await page.goto(`/preview/${sceneId}`);
+    const target = page.locator('[data-node-id]').first();
+    await expect(target).toBeVisible({ timeout: 60_000 });
+    const nodeId = await target.getAttribute('data-node-id');
+    expect(nodeId).toBeTruthy();
+
+    expect(await fireScriptBinding(page, nodeId!, nodeId!, false)).toBe('fired');
+    // 能力实现会直接写 el.style.display = 'none'，同帧生效；脚本本身是异步的所以轮询
+    await expect(target).toBeHidden({ timeout: 15_000 });
+
+    // 再跑一次恢复可见：证明不是一次性副作用
+    expect(await fireScriptBinding(page, nodeId!, nodeId!, true)).toBe('fired');
+    await expect(target).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('能力调用越界时被拒而不是默默生效', async ({ page }) => {
+    await openFirstSceneEditor(page);
+    await addWidgetAndVerify(page);
+    const sceneId = new URL(page.url()).pathname.split('/scenes/')[1].split('/')[0];
+    await page.goto(`/preview/${sceneId}`);
+    const target = page.locator('[data-node-id]').first();
+    await expect(target).toBeVisible({ timeout: 60_000 });
+    const nodeId = await target.getAttribute('data-node-id');
+
+    // 不在白名单里的能力名：必须由能力层拒绝，且不能影响 DOM
+    const res = await page.evaluate(
+      ([src]) =>
+        new Promise<{ status: string; hidden: boolean }>((resolve) => {
+          const rt = (
+            window as unknown as {
+              __dtEventRuntime?: {
+                setBindings: (list: unknown[]) => void;
+                fire: (s: string, e: string) => void;
+              };
+            }
+          ).__dtEventRuntime;
+          if (!rt) return resolve({ status: 'no-handle', hidden: false });
+          rt.setBindings([
+            {
+              id: 'e2e-unknown-cap',
+              sourceId: src,
+              event: 'click',
+              enabled: true,
+              actions: [
+                {
+                  id: 'act-1',
+                  type: 'RUN_SCRIPT',
+                  // 不存在的调用名（同时也试了拼 window）：必须报错而不是静默成功
+                  params: {
+                    script: "await ctx.nodes.setOpacity('x', 0); return 1;",
+                  },
+                },
+              ],
+            },
+          ]);
+          rt.fire(String(src), 'click');
+          setTimeout(() => {
+            const el = document.querySelector(`[data-node-id="${src}"]`) as HTMLElement | null;
+            resolve({ status: 'done', hidden: el?.style.display === 'none' });
+          }, 2000);
+        }),
+      [nodeId] as const,
+    );
+
+    expect(res.status).toBe('done');
+    expect(res.hidden, '未注册的能力不得产生任何效果').toBe(false);
+    await expect(target).toBeVisible();
   });
 });
