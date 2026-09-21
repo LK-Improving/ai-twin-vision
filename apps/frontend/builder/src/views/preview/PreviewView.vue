@@ -329,8 +329,9 @@ function initRuntimes(): void {
     },
   });
 
-  // 事件绑定来自场景配置（后端当前只在 layout 中保存节点，事件随模板能力扩展）
-  eventRuntime.setBindings([]);
+  // 事件绑定来自场景 DSL（biz_scene.layout.events，由编辑器事件编排面板写入）。
+  // 此前这里是写死的 []，导致用户配好的绑定在预览与发布大屏里完全不执行（迭代 5.5）。
+  eventRuntime.setBindings(scene.value?.layout?.events ?? []);
   eventRuntime.bindDomEvents();
   eventRuntime.bindViewer();
 
