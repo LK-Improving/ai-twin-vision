@@ -75,6 +75,22 @@ test.describe('发布与公开访问', () => {
     }
   });
 
+  test('重新发布保持同一个发布令牌', async ({ page }) => {
+    // 两次完整发布链路比较耗时间，单独给这条放宽到 180s（上一版跑满 120s 被强制关页）
+    test.setTimeout(180_000);
+
+    // PublishDialog 的提示文字向用户承诺了「令牌在首次发布时生成，重新发布不会改变，
+    // 已发出的链接持续有效」。这是已分发链接会不会集体失效的契约，目前无人看守。
+    await openFirstSceneEditor(page);
+    await addWidgetAndVerify(page);
+    const first = await publishAndGetScreenUrl(page);
+
+    // 第二次不再改内容：契约只关于令牌稳定性，与画布是否变脏无关
+    const second = await publishAndGetScreenUrl(page);
+
+    expect(second, '重新发布不应产生新令牌（否则旧链接全断）').toBe(first);
+  });
+
   test('无效令牌的大屏地址必须给出可读的失败态', async ({ browser }) => {
     const anon = await browser.newContext();
     try {
