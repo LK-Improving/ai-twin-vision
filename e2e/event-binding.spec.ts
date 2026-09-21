@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import './diagnostics';
 
 /**
@@ -9,8 +9,10 @@ import './diagnostics';
  * 而是把绑定真正写进场景 DSL（PATCH layout），再靠预览页自己去加载与执行，
  * 这样才覆盖得住那条数据路径；否则用例只证明了运行时能力，证不了接线。
  *
- * 夹具策略：从现有场景里挑一个有节点的，备份其 layout → 加一条绑定 → 断言 → 还原。
- * 不新建场景（避免留下测试垃圾），也不改动节点内容（只增删 events）。
+ * 夹具策略：只借一个现有场景当载体，**自造两个 TEXT 节点 + 一条绑定**写进它的 layout，
+ * 断言完在 finally 里把整份原 layout 还原。
+ * 不依赖种子数据恰好有几个节点（CI 上首次跑红就是因为挑中的场景只渲染出 1 个节点），
+ * 也不新建场景（避免留下测试垃圾）。
  */
 
 const API = '/api/v1';
@@ -47,51 +49,46 @@ async function login(request: APIRequestContext): Promise<string> {
 
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
-/** 找一个 layout.nodes 非空的场景（不假设种子数据长什么样） */
-async function pickSceneWithNodes(request: APIRequestContext) {
+/** 随便找一个场景当载体（只需要它的 id 与原始 layout，用于最后还原） */
+async function pickAnyScene(request: APIRequestContext) {
   const listResp = await request.get(`${API}/scenes?page=1&limit=20`, { headers: auth() });
   expect(listResp.ok(), `场景列表请求失败：${listResp.status()}`).toBe(true);
   const list = (await listResp.json()) as Envelope<{ dataList: SceneListItem[] }>;
   const rows = list.data?.dataList ?? [];
-  expect(Array.isArray(rows), '场景列表结构异常（应为 data.dataList）').toBe(true);
   expect(rows.length, '种子里没有任何场景').toBeGreaterThan(0);
 
   for (const row of rows) {
     const detailResp = await request.get(`${API}/scenes/${row.id}`, { headers: auth() });
     if (!detailResp.ok()) continue;
     const detail = (await detailResp.json()) as Envelope<{ layout?: PageSchemaLike }>;
-    const layout = detail.data.layout;
-    if (layout && Array.isArray(layout.nodes) && layout.nodes.length > 0) {
-      return { id: row.id, layout };
-    }
+    if (detail.data.layout) return { id: row.id, layout: detail.data.layout };
   }
-  throw new Error('未找到含节点的种子场景；请确认 pnpm db:seed 已执行');
+  throw new Error('拿不到任何场景的 layout');
+}
+
+/** 自造两个叶子节点：不依赖种子数据恰好有几个节点
+ * （CI 上第一次跑红就是因为挑中的场景只渲染出 1 个节点）。 */
+function e2eNodes(tag: string) {
+  const mk = (role: 'source' | 'target', x: number) => ({
+    id: `e2e-${role}-${tag}`,
+    type: 'TEXT',
+    name: `e2e ${role}`,
+    rect: { x, y: 40, width: 220, height: 60, zIndex: 50 },
+    props: { content: `e2e ${role} ${tag}`, fontSize: 20, color: '#0f2c5c' },
+  });
+  return [mk('source', 40), mk('target', 320)];
 }
 
 test.describe('事件绑定：DSL → 预览执行', () => {
-  /** 从预览 DOM 里取「叶子节点」id：它们中心不会被子节点覆盖，
-   * 事件监听里的 closest('[data-node-id]') 才能解析到自己。 */
-  async function leafNodeIds(page: Page): Promise<string[]> {
-    return page.evaluate(() =>
-      [...document.querySelectorAll('[data-node-id]')]
-        .filter((el) => !el.querySelector('[data-node-id]'))
-        .map((el) => el.getAttribute('data-node-id') as string)
-        .filter(Boolean),
-    );
-  }
-
   test('写进场景 DSL 的点击事件能在预览里生效', async ({ page, request }) => {
     test.setTimeout(180_000);
     token = await login(request);
 
-    const { id: sceneId, layout } = await pickSceneWithNodes(request);
-
-    // 先打开一次拿到真实 DOM，挑两个叶子节点作为「事件源」与「被隐藏目标」
-    await page.goto(`/preview/${sceneId}`);
-    await expect(page.locator('[data-node-id]').first()).toBeVisible({ timeout: 60_000 });
-    const leaves = await leafNodeIds(page);
-    expect(leaves.length, '预览里找不到两个叶子节点，无法验证点击事件').toBeGreaterThan(1);
-    const [sourceId, targetId] = [leaves[0], leaves[1]];
+    const { id: sceneId, layout: original } = await pickAnyScene(request);
+    const tag = `${Date.now()}`.slice(-6);
+    const nodes = e2eNodes(tag);
+    const sourceId = nodes[0].id;
+    const targetId = nodes[1].id;
 
     const binding = {
       id: 'e2e-5-5',
@@ -107,16 +104,16 @@ test.describe('事件绑定：DSL → 预览执行', () => {
       ],
     };
 
-    // 写入绑定（保留原 nodes，只改 events），并在用例结束后还原
+    // 一次 PATCH 同时写入自造节点与绑定；finally 里把整份原 layout 还原
     const patched = await request.patch(`${API}/scenes/${sceneId}`, {
       headers: auth(),
-      data: { layout: { ...layout, events: [binding] } },
+      data: { layout: { ...original, nodes, events: [binding] } },
     });
-    expect(patched.ok(), `写入事件绑定失败：${patched.status()}`).toBe(true);
+    expect(patched.ok(), `写入夹具失败：${patched.status()}`).toBe(true);
 
     try {
-      // 重新加载：绑定必须从 DSL 读出来，而不是测试注入
-      await page.reload({ waitUntil: 'domcontentloaded' });
+      // 直接打开预览：绑定与节点都必须从持久化 DSL 读出来，而不是测试注入
+      await page.goto(`/preview/${sceneId}`);
       const source = page.locator(`[data-node-id="${sourceId}"]`).first();
       const target = page.locator(`[data-node-id="${targetId}"]`).first();
       await expect(source).toBeVisible({ timeout: 60_000 });
@@ -132,7 +129,7 @@ test.describe('事件绑定：DSL → 预览执行', () => {
     } finally {
       const restored = await request.patch(`${API}/scenes/${sceneId}`, {
         headers: auth(),
-        data: { layout: { ...layout, events: [] } },
+        data: { layout: original },
       });
       expect(restored.ok(), `还原 layout 失败：${restored.status()}`).toBe(true);
     }
